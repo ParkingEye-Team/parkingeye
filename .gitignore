@@ -5,9 +5,11 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 
-# ---- 训练与推理产物 ----
+# ---- 训练与推理产物（ml/ 下与仓库根的历史位置都忽略） ----
 runs/
 runs_train_log.txt
+ml/runs/
+ml/runs_train_log.txt
 *.pt
 *.cache
 

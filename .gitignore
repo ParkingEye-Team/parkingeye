@@ -1,0 +1,33 @@
+# ---- 环境 / 依赖 ----
+.venv/
+.wheels/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# ---- 训练与推理产物 ----
+runs/
+runs_train_log.txt
+*.pt
+*.cache
+
+# ---- 遥感影像数据（卫星原始影像及伴生文件不入库；仅保留顶层成果预览 PNG） ----
+data/imagery/*
+!data/imagery/*.png
+data/dota_yolo/
+data/annot_aux/
+data/seg_kf01c/
+
+# ---- 轻量结构化数据（保留目录占位） ----
+data/osm/
+!data/osm/*.json
+
+# ---- IDE / 系统 ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ---- 导出与杂项 ----
+*.zip
+*.log

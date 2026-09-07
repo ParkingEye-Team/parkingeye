@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <!-- 图标底板渐变（深空蓝，模拟卫星影像底图） -->
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#213A64"/>
+      <stop offset="1" stop-color="#0E1D3B"/>
+    </linearGradient>
+    <!-- 虹膜渐变 -->
+    <radialGradient id="iris" cx="0.38" cy="0.32" r="0.9">
+      <stop offset="0" stop-color="#4D96FF"/>
+      <stop offset="1" stop-color="#1A55CE"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 底板 -->
+  <rect x="1" y="1" width="98" height="98" rx="22" fill="url(#bg)"/>
+
+  <!-- 四角取景框标记（卫星/遥感取景暗示；以画布中心严格镜像） -->
+  <g stroke="#6FA3FF" stroke-width="1.5" fill="none" opacity="0.9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 12 19.5 V 12 H 19.5"/>
+    <path d="M 88 19.5 V 12 H 80.5"/>
+    <path d="M 12 80.5 V 88 H 19.5"/>
+    <path d="M 88 80.5 V 88 H 80.5"/>
+  </g>
+
+  <!-- 眼白 -->
+  <ellipse cx="50" cy="46" rx="29" ry="18.5" fill="#FFFFFF"/>
+
+  <!-- 虹膜（嵌于眼白内，下缘留白边） -->
+  <circle cx="50" cy="48.5" r="13.2" fill="url(#iris)"/>
+
+  <!-- 瞳孔 = 停车 P 字形（Arial Bold 轮廓，翻转适配 SVG 坐标） -->
+  <path transform="translate(50 48.5) scale(0.0085266 -0.0085266) translate(-710.5 -733)"
+        fill="#FFFFFF"
+        d="M149 0V1466H624Q894 1466 976 1444Q1102 1411 1187.0 1300.5Q1272 1190 1272 1015Q1272 880 1223.0 788.0Q1174 696 1098.5 643.5Q1023 591 945 574Q839 553 638 553H445V0ZM445 1218V802H607Q782 802 841.0 825.0Q900 848 933.5 897.0Q967 946 967 1011Q967 1091 920.0 1143.0Q873 1195 801 1208Q748 1218 588 1218Z"/>
+
+  <!-- 虹膜右上高光 -->
+  <circle cx="57.2" cy="40.5" r="1.7" fill="#FFFFFF" opacity="0.85"/>
+</svg>

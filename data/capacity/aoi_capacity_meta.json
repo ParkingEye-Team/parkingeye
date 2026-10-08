@@ -1,0 +1,26 @@
+{
+  "tif": "C:\\Projects\\基于高分辨率卫星图像的城市露天停车资源识别与容量估计系统\\data\\imagery\\JL1KF01C\\JL1KF01C_PMSL2_20231218114103_200220439_101_0022_001_L3D_PSH\\JL1KF01C_PMSL2_20231218114103_200220439_101_0022_001_L3D_PSH.tif",
+  "aoi": [
+    1603,
+    15201,
+    4096
+  ],
+  "seg_weights": "C:\\Projects\\基于高分辨率卫星图像的城市露天停车资源识别与容量估计系统\\runs\\segment\\parking_seg_night\\weights\\best.pt",
+  "conf": 0.25,
+  "min_area_m2": 200.0,
+  "coef_table": {
+    "垂直式": 28,
+    "斜列式": 24,
+    "平行式": 36,
+    "不规则": 32
+  },
+  "default_layout": "垂直式",
+  "coef_uncertainty": 0.2,
+  "counts": {
+    "total": 26,
+    "seg": 24,
+    "osm": 2
+  },
+  "capacity_total": 4674,
+  "caveat": "布局为默认值(垂直式)，系数为工程初值，待容量真值校准；AOI 与标注训练区有重叠，分割表现为 in-sample 偏乐观"
+}

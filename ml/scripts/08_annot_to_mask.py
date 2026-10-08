@@ -47,15 +47,18 @@ def main():
         if not png_path.exists():
             print(f"[跳过] {jf.name}: 无对应 PNG")
             continue
-        # 读 txt 元数据得 col/row 偏移
+        # 读 txt 元数据得 col/row 偏移（兼容 CRLF/同行多键值）
         txt_path = jf.with_suffix(".txt")
         col0 = row0 = 0
         if txt_path.exists():
-            for line in txt_path.read_text(encoding="utf-8").splitlines():
-                if line.startswith("col="):
-                    col0 = int(line.split("=")[1])
-                elif line.startswith("row="):
-                    row0 = int(line.split("=")[1])
+            content = txt_path.read_text(encoding="utf-8")
+            import re
+            mcol = re.search(r"col=(\d+)", content)
+            mrow = re.search(r"row=(\d+)", content)
+            if mcol:
+                col0 = int(mcol.group(1))
+            if mrow:
+                row0 = int(mrow.group(1))
         img = cv2.imread(str(png_path))
         if img is None:
             print(f"[跳过] {jf.name}: PNG 读取失败")
@@ -86,16 +89,12 @@ def main():
 
     print(f"总计 {len(polygons)} 个停车场多边形, 来自 {len(used_png)} 张图")
 
-    # 栅格化到整幅影像
-    geoms = []
+    # 用 cv2.fillPoly 把像素坐标多边形直接画进掩膜（最可靠，无坐标系陷阱）
+    mask = np.zeros((height, width), dtype="uint8")
     for label, pts in polygons:
-        geoms.append(({"type": "Polygon", "coordinates": [pts + [pts[0]]]}, 1))
-    if geoms:
-        mask = rasterio.features.rasterize(geoms, out_shape=(height, width),
-                                           transform=transform, fill=0,
-                                           dtype="uint8")
-    else:
-        mask = np.zeros((height, width), dtype="uint8")
+        poly = np.array(pts, dtype=np.int32).reshape(-1, 1, 2)
+        cv2.fillPoly(mask, [poly], 1)
+    if not polygons:
         print("[警告] 无有效多边形，掩膜全零")
 
     # 写 GeoTIFF

@@ -1,9 +1,12 @@
-# ---- 环境 / 依赖 ----
+# ---- 环境 / 依赖 / 密钥 ----
 .venv/
 .wheels/
 __pycache__/
 *.py[cod]
 *.egg-info/
+.env
+.env.*
+!.env.example
 
 # ---- 训练与推理产物（ml/ 下与仓库根的历史位置都忽略） ----
 runs/
@@ -12,6 +15,11 @@ ml/runs/
 ml/runs_train_log.txt
 *.pt
 *.cache
+# 训练/推理终端日志（体积大，属过程产物）
+dota_resume_log.txt
+seg_night_log.txt
+ge_finetune_log.txt
+ds_probe_out.txt
 
 # ---- 遥感影像数据（卫星原始影像及伴生文件不入库；仅保留顶层成果预览 PNG） ----
 data/imagery/*
@@ -19,6 +27,21 @@ data/imagery/*
 data/dota_yolo/
 data/annot_aux/
 data/seg_kf01c/
+data/seg_kf01c_manual/
+data/seg_manual/
+
+# ---- GE 截图与派生数据集（原图版权归 Google，不入库；标注 JSON 可另存） ----
+data/ge_annot/raw/
+data/ge_yolo/
+data/ge_yolo_tiled/
+
+# ---- 推理过程产物（叠加图/预览大图不入库） ----
+data/infer/
+
+# ---- 容量估计产物：保留轻量成果（CSV/GeoJSON/JSON），忽略大图 ----
+data/capacity/*.png
+data/capacity/*.jpg
+!data/capacity/*_small.jpg
 
 # ---- 轻量结构化数据（保留目录占位） ----
 data/osm/

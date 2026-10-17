@@ -19,6 +19,7 @@ ml/runs_train_log.txt
 dota_resume_log.txt
 seg_night_log.txt
 ge_finetune_log.txt
+ge_ft_v2_log.txt
 ds_probe_out.txt
 
 # ---- 遥感影像数据（卫星原始影像及伴生文件不入库；仅保留顶层成果预览 PNG） ----
@@ -37,6 +38,11 @@ data/ge_yolo_tiled/
 
 # ---- 推理过程产物（叠加图/预览大图不入库） ----
 data/infer/
+
+# ---- JL1 域预标注工作台：保留 README，切片与预标注 JSON 不入库（由脚本 20 可重建） ----
+data/jl1_annot/*/images/
+data/jl1_annot/*/preannot_raw/
+data/jl1_annot/*/work/
 
 # ---- 容量估计产物：保留轻量成果（CSV/GeoJSON/JSON），忽略大图 ----
 data/capacity/*.png

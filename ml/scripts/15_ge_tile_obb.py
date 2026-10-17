@@ -1,7 +1,7 @@
 """GE 大图 + YOLO-OBB 标签 -> 1024 切片（供微调，避免整图缩得太小车辆退化）。
 
-输入：data/ge_yolo/train/images|labels（YOLO-OBB 归一化标签，大图）
-输出：data/ge_yolo_tiled/train/images|labels（1024×1024 切片，带 200 重叠）
+输入：data/ge_yolo/{train,val}/images|labels（YOLO-OBB 归一化标签，大图）
+输出：data/ge_yolo_tiled/{train,val}/images|labels（1024×1024 切片，带 200 重叠）
       切片内坐标重新归一化；完全落在切片内的框才保留（避免切碎的目标）。
 
 用法:
@@ -15,20 +15,22 @@ import numpy as np
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "data/ge_yolo" / "train"
-OUT = ROOT / "data/ge_yolo_tiled" / "train"
+SRC_ROOT = ROOT / "data/ge_yolo"
+OUT_ROOT = ROOT / "data/ge_yolo_tiled"
 TILE = 1024
 OVERLAP = 200
 STRIDE = TILE - OVERLAP
-MIN_BOX_AREA_RATIO = 0.15  # 框面积占切片面积比例下限(相对框本身, 实际过滤切碎目标用交并比)
 
 
-def main():
-    imgs = sorted((SRC / "images").glob("*.jpg"))
+def tile_split(split: str):
+    src = SRC_ROOT / split
+    out = OUT_ROOT / split
+    imgs = sorted((src / "images").glob("*.jpg"))
     if not imgs:
-        raise SystemExit(f"无输入图: {SRC / 'images'}")
+        print(f"[{split}] 无输入图，跳过")
+        return 0, 0
     for sub in ("images", "labels"):
-        d = OUT / sub
+        d = out / sub
         if d.exists():
             shutil.rmtree(d)
         d.mkdir(parents=True, exist_ok=True)
@@ -39,7 +41,7 @@ def main():
         img = cv2.cvtColor(np.asarray(Image.open(ip).convert("RGB")), cv2.COLOR_RGB2BGR)
         H, W = img.shape[:2]
         labs = []
-        lp = SRC / "labels" / (ip.stem + ".txt")
+        lp = src / "labels" / (ip.stem + ".txt")
         if lp.exists():
             for line in lp.read_text(encoding="utf-8").splitlines():
                 parts = line.split()
@@ -68,11 +70,18 @@ def main():
                 if keep:
                     stem = f"{ip.stem}_x{x0}_y{y0}"
                     Image.fromarray(cv2.cvtColor(tile, cv2.COLOR_BGR2RGB)).save(
-                        str(OUT / "images" / f"{stem}.jpg"), "JPEG", quality=95)
-                    (OUT / "labels" / f"{stem}.txt").write_text("\n".join(keep) + "\n", encoding="utf-8")
+                        str(out / "images" / f"{stem}.jpg"), "JPEG", quality=95)
+                    (out / "labels" / f"{stem}.txt").write_text("\n".join(keep) + "\n", encoding="utf-8")
                     n_tiles += 1
                     n_boxes += len(keep)
-    print(f"完成：{len(imgs)} 张大图 -> {n_tiles} 切片 / {n_boxes} 框  -> {OUT}")
+    print(f"[{split}] {len(imgs)} 张大图 -> {n_tiles} 切片 / {n_boxes} 框")
+    return n_tiles, n_boxes
+
+
+def main():
+    t1, b1 = tile_split("train")
+    t2, b2 = tile_split("val")
+    print(f"完成：train {t1} 切片 / {b1} 框；val {t2} 切片 / {b2} 框 -> {OUT_ROOT}")
 
 
 if __name__ == "__main__":

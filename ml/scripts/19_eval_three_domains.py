@@ -19,6 +19,7 @@ import rasterio
 import rasterio.windows
 from rasterio.warp import transform as wtransform
 from ultralytics import YOLO
+from osm_utils import is_surface_parking
 
 ROOT = Path(__file__).resolve().parents[2]
 WINTER_TIF = ROOT / "data/imagery/JL1KF01C/JL1KF01C_PMSL2_20231218114103_200220439_101_0022_001_L3D_PSH" \
@@ -50,6 +51,8 @@ def window_detections(model, tif, windows):
             arr = np.transpose(src.read([1, 2, 3], window=rasterio.windows.Window(c0, r0, IMGSZ, IMGSZ)), (1, 2, 0)).astype(np.uint8)
             if (arr.max(axis=2) < 8).mean() > 0.5:
                 continue
+            # 注意（doc/11 P0-3）：arr 为 rasterio RGB；DOTA 旧权重训练时 R/B 被交换，
+            # 推理必须继续传 RGB 对齐，不要改成 BGR（除非重训 DOTA）。
             r = model(arr, conf=CONF, iou=0.55, imgsz=IMGSZ, max_det=MAX_DET, verbose=False)[0]
             ns.append(0 if r.obb is None else len(r.obb))
     return ns
@@ -71,13 +74,19 @@ def main():
     import glob
     for tp in sorted(glob.glob(str(ROOT / "data/annot_aux/*.txt")))[:3]:
         c = open(tp, encoding="utf-8", errors="ignore").read()
-        w_windows.append((int(re.search(r"col=(\d+)", c).group(1)), int(re.search(r"row=(\d+)", c).group(1))))
+        mcol = re.search(r"col=(\d+)", c)
+        mrow = re.search(r"row=(\d+)", c)
+        if not (mcol and mrow):
+            print(f"[跳过] {tp}: 缺少 col/row 偏移")
+            continue
+        w_windows.append((int(mcol.group(1)), int(mrow.group(1))))
     w_ns = window_detections(model, WINTER_TIF, w_windows)
     res["winter"] = {"windows": len(w_ns), "total": int(sum(w_ns)), "counts": [int(x) for x in w_ns]}
     print(f"[冬季窗口] {res['winter']}")
 
     # 3) 夏季窗口（OSM 前15个落在夏季景内的）
-    els = [e for e in json.load(open(OSM, encoding="utf-8"))["elements"] if "geometry" in e]
+    els = [e for e in json.load(open(OSM, encoding="utf-8"))["elements"]
+           if "geometry" in e and is_surface_parking(e.get("tags", {}))]
     lons = [np.mean([g["lon"] for g in e["geometry"]]) for e in els]
     lats = [np.mean([g["lat"] for g in e["geometry"]]) for e in els]
     with rasterio.open(SUMMER_TIF) as src:

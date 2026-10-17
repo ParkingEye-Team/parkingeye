@@ -3,6 +3,7 @@
 输入：data/ge_yolo/{train,val}/images|labels（YOLO-OBB 归一化标签，大图）
 输出：data/ge_yolo_tiled/{train,val}/images|labels（1024×1024 切片，带 200 重叠）
       切片内坐标重新归一化；完全落在切片内的框才保留（避免切碎的目标）。
+      边缘补窗（P0-5）覆盖整图；每张图保留少量纯背景切片（P1-1）。
 
 用法:
   ./.venv/Scripts/python.exe ml/scripts/15_ge_tile_obb.py
@@ -20,6 +21,17 @@ OUT_ROOT = ROOT / "data/ge_yolo_tiled"
 TILE = 1024
 OVERLAP = 200
 STRIDE = TILE - OVERLAP
+MAX_EMPTY_PER_IMAGE = 2   # 每张图最多保留的纯背景切片数
+
+
+def tile_positions(size: int, tile: int, stride: int):
+    """滑窗起点，补右/下边缘最后一个窗口（P0-5）。"""
+    if size <= tile:
+        return [0]
+    pos = list(range(0, size - tile, stride))
+    if pos[-1] != size - tile:
+        pos.append(size - tile)
+    return pos
 
 
 def tile_split(split: str):
@@ -35,7 +47,7 @@ def tile_split(split: str):
             shutil.rmtree(d)
         d.mkdir(parents=True, exist_ok=True)
 
-    n_tiles = n_boxes = 0
+    n_tiles = n_boxes = n_empty = 0
     for ip in imgs:
         # PIL 读图（cv2 读不了中文路径）；转 BGR 供 cv2.imwrite
         img = cv2.cvtColor(np.asarray(Image.open(ip).convert("RGB")), cv2.COLOR_RGB2BGR)
@@ -51,10 +63,13 @@ def tile_split(split: str):
                 xy[:, 0] *= W
                 xy[:, 1] *= H
                 labs.append((int(parts[0]), xy))
-        # 滑窗
-        for y0 in range(0, H - TILE + 1, STRIDE):
-            for x0 in range(0, W - TILE + 1, STRIDE):
+        # 滑窗（含边缘补窗）
+        empty_kept = 0
+        for y0 in tile_positions(H, TILE, STRIDE):
+            for x0 in tile_positions(W, TILE, STRIDE):
                 tile = img[y0:y0 + TILE, x0:x0 + TILE]
+                if tile.shape[0] != TILE or tile.shape[1] != TILE:
+                    continue
                 keep = []
                 for cls, xy in labs:
                     # 框完全在切片内
@@ -67,14 +82,24 @@ def tile_split(split: str):
                         continue
                     rel = (xy - np.array([x0, y0])) / TILE
                     keep.append(f"{cls} " + " ".join(f"{v:.6f}" for v in rel.flatten()))
+                stem = f"{ip.stem}_x{x0}_y{y0}"
                 if keep:
-                    stem = f"{ip.stem}_x{x0}_y{y0}"
                     Image.fromarray(cv2.cvtColor(tile, cv2.COLOR_BGR2RGB)).save(
                         str(out / "images" / f"{stem}.jpg"), "JPEG", quality=95)
                     (out / "labels" / f"{stem}.txt").write_text("\n".join(keep) + "\n", encoding="utf-8")
                     n_tiles += 1
                     n_boxes += len(keep)
-    print(f"[{split}] {len(imgs)} 张大图 -> {n_tiles} 切片 / {n_boxes} 框")
+                elif empty_kept < MAX_EMPTY_PER_IMAGE:
+                    # 保留纯背景切片（P1-1），空标签文件即背景
+                    if (tile.max() < 8):  # 全黑死区不保留
+                        continue
+                    Image.fromarray(cv2.cvtColor(tile, cv2.COLOR_BGR2RGB)).save(
+                        str(out / "images" / f"{stem}.jpg"), "JPEG", quality=95)
+                    (out / "labels" / f"{stem}.txt").write_text("", encoding="utf-8")
+                    empty_kept += 1
+                    n_tiles += 1
+                    n_empty += 1
+    print(f"[{split}] {len(imgs)} 张大图 -> {n_tiles} 切片 / {n_boxes} 框 (其中背景 {n_empty})")
     return n_tiles, n_boxes
 
 

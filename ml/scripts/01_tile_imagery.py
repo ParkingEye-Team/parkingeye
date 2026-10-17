@@ -1,13 +1,14 @@
 """影像切片脚本：把大图切成 512x512（可配）训练切片。
 
 支持两类输入：
-1. GeoTIFF（带地理坐标）：输出切片带 .aux.xml/world 文件可回定位，并生成
-   tiles.geojson 记录每个切片的地理范围，供标签栅格化与结果回写使用。
-2. 普通 PNG/JPG（无坐标，如 Google Earth 截图）：纯网格切片。
+1. GeoTIFF（带地理坐标）：在 tiles.json 中记录每个切片的地理范围
+   （bbox_geo），供标签栅格化与结果回写使用。
+2. 普通 PNG/JPG（无坐标，如 Google Earth 截图）：纯网格切片，
+   `georeferenced=false`，不生成 bbox_geo。
 
 用法:
-  python scripts/01_tile_imagery.py input.tif output_dir --tile 512 --overlap 64
-  python scripts/01_tile_imagery.py screenshot.jpg output_dir --tile 512 --overlap 64
+  python ml/scripts/01_tile_imagery.py input.tif output_dir --tile 512 --overlap 64
+  python ml/scripts/01_tile_imagery.py screenshot.jpg output_dir --tile 512 --overlap 64
 """
 import argparse
 import json
@@ -24,13 +25,16 @@ def read_image(path: Path):
         with rasterio.open(path) as src:
             img = src.read([1, 2, 3])  # (3, H, W)
             img = np.transpose(img, (1, 2, 0))
+            # PNG 也能被 rasterio 打开，但 crs 为 None；只有真正带 CRS 才算地理参考
+            has_crs = src.crs is not None
             meta = {
-                "georeferenced": True,
-                "transform": list(src.transform)[:6],
-                "crs": str(src.crs),
+                "georeferenced": has_crs,
                 "width": src.width,
                 "height": src.height,
             }
+            if has_crs:
+                meta["transform"] = list(src.transform)[:6]
+                meta["crs"] = str(src.crs)
             return img, meta
     except Exception:
         img = cv2.imread(str(path), cv2.IMREAD_COLOR)

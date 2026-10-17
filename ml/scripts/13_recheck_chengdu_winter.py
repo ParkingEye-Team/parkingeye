@@ -61,6 +61,9 @@ def main():
                 name = Path(tp).stem
                 for variant, arr in _read_variants(src, c0, r0, tile):
                     for conf in CONFS:
+                        # 注意（doc/11 P0-3）：arr 是 rasterio 的 RGB。当前 DOTA 权重是在
+                        # “R/B 交换过”的训练图上学的，因此这里必须继续传 RGB 才能对齐；
+                        # 不要改成 BGR（会把检出从 323 降到 138），除非重训 DOTA。
                         res = model(arr, conf=conf, imgsz=IMGSZ, max_det=MAX_DET, verbose=False)[0]
                         obb = res.obb
                         n = 0 if obb is None else len(obb)

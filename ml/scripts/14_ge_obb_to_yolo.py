@@ -60,10 +60,14 @@ def main():
         # 用 JSON 里的 imageWidth/imageHeight（若缺失则回退到图片实际尺寸）
         iw = data.get("imageWidth") or data.get("image_width")
         ih = data.get("imageHeight") or data.get("image_height")
+        from PIL import Image as _PILImage
+        actual_w, actual_h = _PILImage.open(img_src).size
         if not (iw and ih):
-            from PIL import Image
-            im = Image.open(img_src)
-            iw, ih = im.size
+            iw, ih = actual_w, actual_h
+        elif (iw, ih) != (actual_w, actual_h):
+            # 标注 JSON 过期会导致所有框静默错位（P2-6）
+            print(f"  [警告] {jf.name}: JSON 尺寸 {(iw, ih)} != 实际图片 {(actual_w, actual_h)}，以实际图片为准")
+            iw, ih = actual_w, actual_h
 
         lines = []
         for shp in data.get("shapes", []):

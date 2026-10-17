@@ -20,6 +20,7 @@ dota_resume_log.txt
 seg_night_log.txt
 ge_finetune_log.txt
 ge_ft_v2_log.txt
+ge_ft_v3_log.txt
 ds_probe_out.txt
 
 # ---- 遥感影像数据（卫星原始影像及伴生文件不入库；仅保留顶层成果预览 PNG） ----

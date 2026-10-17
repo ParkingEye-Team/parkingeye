@@ -38,7 +38,7 @@ def main():
         exist_ok=True,       # OBB 任务默认输出到 runs/obb/<name>
         amp=True,            # FP16
         patience=15,
-        workers=4,
+        workers=0,  # Windows 约定：DataLoader 多进程易崩（AGENTS.md）
         cache=False,         # 8GB 显存不缓存
     )
 

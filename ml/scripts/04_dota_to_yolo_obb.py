@@ -156,6 +156,11 @@ def process_split(split, src_dir, label_version, out, tile, overlap, seen):
                     if not lines:
                         continue
                     fname = f"{stem}__{x}_{y}"
+                    # ⚠️ 历史通道约定（doc/11 P0-3）：tile_img 是 BGR；这里再转 RGB 后交给
+                    # cv2.imwrite（按 BGR 解释），等于把 R/B 交换后落盘。现有 DOTA 权重正是
+                    # 在这批“交换过颜色”的图上训练的，因此 13/19/20 推理时必须继续传 RGB
+                    # （第二次交换把颜色换回来）才能对齐。**在重训 DOTA 之前不要改这一行**；
+                    # 若改为直接写 tile_img（BGR），必须同时重训并统一所有推理脚本的通道。
                     cv2.imwrite(str(out / "images" / split / f"{fname}.png"),
                                 cv2.cvtColor(tile_img, cv2.COLOR_BGR2RGB))
                     (out / "labels" / split / f"{fname}.txt").write_text(

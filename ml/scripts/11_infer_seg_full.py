@@ -2,18 +2,30 @@
 
 对整幅 GeoTIFF 影像做滑窗推理，输出：预测掩膜（停车场=1）GeoTIFF + 可视化叠加 PNG。
 
+注意：分割模型训练时使用 BGR（cv2 约定），推理前必须把 rasterio 的 RGB 转为 BGR，
+否则命中率会大幅下降（2026-10-17 审查：同一批夏季窗口 RGB 26% vs BGR 65%）。
+
 用法:
   python ml/scripts/11_infer_seg_full.py --model <best.pt> --tif <影像> \
       --out data/infer/full_mask.tif --tile 512 --overlap 64 --device cpu
 """
 import argparse
-import glob
 from pathlib import Path
 
 import cv2
 import numpy as np
 import rasterio
 from ultralytics import YOLO
+
+
+def tile_positions(size: int, tile: int, step: int):
+    """生成滑窗起点，并补上右/下边缘的最后一个窗口（避免漏掉边缘条带）。"""
+    if size <= tile:
+        return [0]
+    pos = list(range(0, size - tile, step))
+    if pos[-1] != size - tile:
+        pos.append(size - tile)
+    return pos
 
 
 def main():
@@ -39,15 +51,19 @@ def main():
         cnt = np.zeros((height, width), dtype=np.uint8)
         step = args.tile - args.overlap
         n_win = 0
-        for y in range(0, height - args.tile + 1, step):
-            for x in range(0, width - args.tile + 1, step):
+        ys = tile_positions(height, args.tile, step)
+        xs = tile_positions(width, args.tile, step)
+        for y in ys:
+            for x in xs:
                 win = rasterio.windows.Window(x, y, args.tile, args.tile)
                 img = src.read([1, 2, 3], window=win)
-                img = np.transpose(img, (1, 2, 0)).astype(np.uint8)
+                rgb = np.transpose(img, (1, 2, 0)).astype(np.uint8)
                 # 跳过死区
-                if img.mean() < 5:
+                if rgb.mean() < 5:
                     continue
-                r = model.predict(img, conf=args.conf, imgsz=args.tile,
+                # rasterio 读为 RGB；Ultralytics numpy 输入按 BGR 解释 -> 必须转换
+                bgr = np.ascontiguousarray(rgb[:, :, ::-1])
+                r = model.predict(bgr, conf=args.conf, imgsz=args.tile,
                                   device=args.device, verbose=False)[0]
                 mask = np.zeros((args.tile, args.tile), dtype=np.float32)
                 if r.masks is not None:

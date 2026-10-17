@@ -1,10 +1,12 @@
 """夏季影像正式评估：分割泛化 + 车辆检测（修正配置）。
 
 对夏季景(JL1KF01C 2024-08-25, 成都东部)内所有 OSM 停车场窗口：
-  - 分割模型(冬季训练) -> 测试跨域泛化：能否圈出停车场
-  - 车辆检测(修正配置 imgsz=1024/max_det=2000) -> 检出数
+  - 分割模型(冬季训练) -> 测试跨域泛化：能否圈出停车场（输入 BGR）
+  - 车辆检测(修正配置 imgsz=1024/max_det=2000) -> 检出数（输入 RGB，DOTA 旧权重约定）
   - 保存叠加图供人工复核
 输出：data/infer/summer_eval/ + CSV
+
+注意：分割与检测的通道约定不同，详见代码内注释（2026-10-17 审查 P0-2/P0-3）。
 
 用法:
   ./.venv/Scripts/python.exe ml/scripts/17_eval_summer.py
@@ -19,6 +21,7 @@ import rasterio
 import rasterio.windows
 from rasterio.warp import transform as wtransform
 from ultralytics import YOLO
+from osm_utils import is_surface_parking
 
 ROOT = Path(__file__).resolve().parents[2]
 TIF = ROOT / "data/imagery/JL1KF01C_PMSL1_20240825114907_200295580_102_0009_001_L3D_PSH" \
@@ -38,7 +41,8 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     det = YOLO(str(DET_W))
     seg = YOLO(str(SEG_W))
-    els = [e for e in json.load(open(OSM, encoding="utf-8"))["elements"] if "geometry" in e]
+    els = [e for e in json.load(open(OSM, encoding="utf-8"))["elements"]
+           if "geometry" in e and is_surface_parking(e.get("tags", {}))]
     lons = [np.mean([g["lon"] for g in e["geometry"]]) for e in els]
     lats = [np.mean([g["lat"] for g in e["geometry"]]) for e in els]
 
@@ -58,10 +62,15 @@ def main():
             if (arr.max(axis=2) < 8).mean() > 0.5:  # 死区
                 continue
             checked += 1
+            # 通道约定（2026-10-17 审查 P0-2/P0-3）：
+            # - 分割模型训练用正确 BGR，推理须把 rasterio 的 RGB 转成 BGR；
+            # - DOTA 检测权重训练图像曾被 R/B 交换，当前推理必须继续传 RGB 以保持“二次交换对齐”，
+            #   在 DOTA 重训前不要改成 BGR（否则检出会从 323 掉到 138）。
+            bgr = np.ascontiguousarray(arr[:, :, ::-1])
             # 分割
-            rs = seg(arr, imgsz=IMGSZ, conf=0.25, verbose=False)[0]
+            rs = seg(bgr, imgsz=IMGSZ, conf=0.25, verbose=False)[0]
             n_seg = 0 if rs.masks is None else len(rs.masks)
-            # 检测
+            # 检测（保持 RGB，见上方说明）
             rd = det(arr, conf=CONF, iou=0.55, imgsz=IMGSZ, max_det=MAX_DET, verbose=False)[0]
             n_det = 0 if rd.obb is None else len(rd.obb)
             rows.append({"idx": i, "col": c0, "row": r0, "seg_lots": n_seg, "vehicles": n_det})

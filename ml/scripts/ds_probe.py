@@ -38,10 +38,26 @@ client = OpenAI(
 MODEL = cfg.get("DEEPSEEK_MODEL", "deepseek-flash")
 
 
+def ensure_internal_image(path: Path):
+    """合规保护（doc/11 P2-16）：GE 截图版权归 Google，禁止发送到外部 API。
+    仅允许 JL1 影像与内部推理图。
+    """
+    p = path.resolve()
+    allowed_roots = [
+        (ROOT / "data/imagery").resolve(),
+        (ROOT / "data/infer").resolve(),
+        (ROOT / "data/jl1_annot").resolve(),
+    ]
+    if not any(str(p).startswith(str(r)) for r in allowed_roots):
+        raise SystemExit(f"拒绝发送：{p} 不在允许目录（data/imagery、data/infer、data/jl1_annot）内；"
+                         "GE 截图等外部版权影像禁止外发。")
+
+
 def img_b64(path: Path, max_side: int = None):
     """读图转 base64 data URL；max_side 限制最长边（模拟不同压缩程度）。"""
     from PIL import Image
     import io
+    ensure_internal_image(path)
     im = Image.open(path).convert("RGB")
     if max_side and max(im.size) > max_side:
         im.thumbnail((max_side, max_side), Image.LANCZOS)

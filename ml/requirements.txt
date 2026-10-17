@@ -14,3 +14,6 @@ fastapi>=0.115
 uvicorn[standard]>=0.32
 # GIS
 geopandas>=1.0
+# 标注辅助/视觉模型探测
+openai>=1.0
+PyYAML>=6.0

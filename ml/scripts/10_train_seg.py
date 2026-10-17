@@ -96,7 +96,7 @@ def main():
         exist_ok=True,
         amp=True,
         patience=25,
-        workers=4,
+        workers=0,  # Windows 约定：DataLoader 多进程易崩（AGENTS.md）
         cache=False,
     )
 

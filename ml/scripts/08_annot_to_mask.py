@@ -19,6 +19,7 @@ import numpy as np
 import rasterio
 import rasterio.features
 from rasterio.transform import from_bounds
+from shapely.geometry import Polygon as ShapelyPolygon, box as ShapelyBox
 
 
 def main():
@@ -67,25 +68,34 @@ def main():
         used_png.add(png_path.name)
         data = json.loads(jf.read_text(encoding="utf-8"))
         n_poly = 0
+        n_clipped = 0
         for shp in data.get("shapes", []):
             label = shp.get("label", "")
             pts = shp.get("points", [])
             if label != "parking" or len(pts) < 3:
                 continue
-            # 像素坐标 -> 全局像素坐标（+偏移）；同时做边界保护
-            global_pts = []
-            ok = True
-            for x, y in pts:
-                gx, gy = x + col0, y + row0
-                if not (0 <= gx < width and 0 <= gy < height):
-                    ok = False
-                    break
-                global_pts.append((gx, gy))
-            if not ok:
+            # 像素坐标 -> 全局像素坐标（+偏移）；越界部分裁剪而不是整条丢弃（P2-5）
+            global_pts = [(x + col0, y + row0) for x, y in pts]
+            try:
+                poly = ShapelyPolygon(global_pts)
+                if not poly.is_valid:
+                    poly = poly.buffer(0)
+                clipped = poly.intersection(ShapelyBox(0, 0, width, height))
+            except Exception:
                 continue
-            polygons.append((label, global_pts))
-            n_poly += 1
-        print(f"{jf.name}: {n_poly} 个停车场多边形 (col0={col0}, row0={row0})")
+            if clipped.is_empty:
+                n_clipped += 1
+                continue
+            parts = list(clipped.geoms) if clipped.geom_type == "MultiPolygon" else [clipped]
+            for part in parts:
+                coords = [(x, y) for x, y in part.exterior.coords[:-1]]
+                if len(coords) < 3:
+                    continue
+                polygons.append((label, coords))
+                n_poly += 1
+            if not poly.equals(clipped):
+                n_clipped += 1
+        print(f"{jf.name}: {n_poly} 个停车场多边形, 裁剪越界 {n_clipped} 个 (col0={col0}, row0={row0})")
 
     print(f"总计 {len(polygons)} 个停车场多边形, 来自 {len(used_png)} 张图")
 

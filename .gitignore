@@ -50,6 +50,7 @@ data/jl1_annot/*/work/
 data/capacity/truth_collection_filled*.csv
 data/capacity/truth_collection_work_*.csv
 data/capacity/backup/
+data/capacity/compare_*/
 data/capacity/*.png
 data/capacity/*.jpg
 !data/capacity/*_small.jpg
@@ -57,6 +58,8 @@ data/capacity/*.jpg
 # ---- 轻量结构化数据（保留目录占位） ----
 data/osm/
 !data/osm/*.json
+# 高德 POI：仅限项目内部使用，按平台条款不公开分发/入库（23 号脚本可重建）
+data/poi/
 
 # ---- IDE / 系统 ----
 .idea/
@@ -67,3 +70,6 @@ Thumbs.db
 # ---- 导出与杂项 ----
 *.zip
 *.log
+
+# ---- 本地文档归档（不追踪；过期计划/旧快照） ----
+doc/archive/

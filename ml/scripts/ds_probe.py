@@ -39,7 +39,7 @@ MODEL = cfg.get("DEEPSEEK_MODEL", "deepseek-flash")
 
 
 def ensure_internal_image(path: Path):
-    """合规保护（doc/11 P2-16）：GE 截图版权归 Google，禁止发送到外部 API。
+    """合规保护（doc/records/audit-2026-10-17.md P2-16）：GE 截图版权归 Google，禁止发送到外部 API。
     仅允许 JL1 影像与内部推理图。
     """
     p = path.resolve()

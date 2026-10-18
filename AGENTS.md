@@ -1,7 +1,7 @@
 # AGENTS.md · ParkingEye 仓库代理工作约定
 
 > 本文件面向所有在本仓库工作的 AI / 自动化代理。开始任何任务前先读本文件；它优先于一般性编码习惯。
-> 最后更新：2026-10-17。
+> 最后更新：2026-10-18。
 
 ---
 
@@ -47,7 +47,7 @@
    - 分割的 mask mAP50=0.804 **不是** mIoU，也**不是**"准确率"；
    - 车辆数 ≠ 容量；当前占用率 ≠ 最大容量；检测 0 辆 ≠ 停车场为空；POI 密度只是**需求代理**，≠ 真实供需。
 6. **推理配置必须用原生分辨率**：`imgsz=1024`（1024 窗口）+ `max_det=2000`。默认 640/300 会系统性压低召回（曾造成"0 检出"假象）。
-7. **通道约定分两条线（doc/11 P0-3）**：分割模型推理用 **BGR**（rasterio RGB 需先 `[:, :, ::-1]`）；当前 DOTA 旧权重因训练时 R/B 交换，推理必须继续传 **RGB** 才能对齐——在重训 DOTA 前不要"修正"它。
+7. **通道约定分两条线（doc/records/audit-2026-10-17.md P0-3）**：分割模型推理用 **BGR**（rasterio RGB 需先 `[:, :, ::-1]`）；当前 DOTA 旧权重因训练时 R/B 交换，推理必须继续传 **RGB** 才能对齐——在重训 DOTA 前不要"修正"它。
 7. **GE 截图仅限内部使用**（版权归 Google）：可作标注底图、容量真值判读、内部调试；**不得**进入系统底图、公开演示材料或论文插图。系统底图用天地图。
 
 ---
@@ -59,7 +59,7 @@
 - **`.env` 绝不入库、绝不打印完整密钥。** 读取配置时只回显前缀。仓库已忽略 `.env`；如需示例，用 `.env.example` 且不含真实值。
 - **数据不入库**：影像（`data/imagery/`）、权重（`*.pt`）、GE 截图原图、派生数据集（`data/ge_yolo*`、`data/jl1_annot/*/images`）、推理叠加图（`data/infer/`）、训练日志均被 `.gitignore` 排除。提交前必须确认 `git diff --cached --name-only` 无 `.env / *.pt / *.tif / *.zip`。
 - **新影像到手 24 小时内完成"解压 → 质检 → 入库"**，不留下载目录过夜（曾因清理下载目录丢失两景 zip）。
-- 申请/下载新影像前，核对编号中的**拍摄时间戳 + 分景号**，与 doc/04 6.1 的库存清单比对，避免重复占用配额。
+- 申请/下载新影像前，核对编号中的**拍摄时间戳 + 分景号**，与 doc/records/imagery-2026-10.md 6.1 的库存清单比对，避免重复占用配额。
 
 ### 3.2 评估与指标
 
@@ -70,7 +70,7 @@
 
 ### 3.3 工程实现
 
-- 脚本统一放 `ml/scripts/`，按编号命名（00–20）。新脚本必须带文件头 docstring：输入、输出、用法、关键参数。
+- 脚本统一放 `ml/scripts/`，按编号命名（当前 00–24，另有 `osm_utils.py`、`safe_io.py`）。新脚本必须带文件头 docstring：输入、输出、用法、关键参数。
 - OBB 推理结果读 `res.obb`（不是 `res.boxes`）；空结果时做 `None` 保护。
 - Windows 环境：训练/推理 `workers=0`；`cv2` 读中文路径会失败，读写图片用 PIL。
 - 大图处理先切片（1024，重叠 ≥200），不要整图缩放推理。
@@ -89,7 +89,7 @@
 ## 四、仓库结构与常用路径
 
 ```
-ml/scripts/            算法与数据管线（00–20）
+ml/scripts/            算法与数据管线（00–24）
   00_check_env.py      环境自检
   01–03                切片 / OSM 标签栅格化 / OSM 拉取
   04–05                DOTA→YOLO-OBB 转换 / DOTA 训练
@@ -99,6 +99,11 @@ ml/scripts/            算法与数据管线（00–20）
   18                   容量估计引擎（核心创新点）
   19                   三域评估
   20                   JL1 域预标注生成
+  21                   容量一致性自检（2m 去重）
+  22                   容量真值校准（严格 17/7 split）
+  23                   高德 POI 拉取（缓存可续跑）
+  24                   POI 需求代理指标
+  safe_io.py           产物备份/原子写入工具
 data/                  本地数据（不入库）
   imagery/             吉林一号原始影像（4 景）
   osm/                 311 个停车场多边形
@@ -107,14 +112,23 @@ data/                  本地数据（不入库）
   capacity/            容量估计产物（CSV/GeoJSON/专题图）
   infer/               推理叠加图（不入库）
 runs/                  训练产物（不入库）
-doc/                   项目文档
+doc/                   项目文档（入口 doc/README.md）
+  current/             状态、路线图、指标总表、难度评估
+  methods/             容量真值、POI、标注、环境
+  records/             带日期的实验与审查快照
+  background/          背景、规划、新人入门
+  archive/             过期文档（本地、不追踪）
 ```
 
 常用命令：
 
 ```bash
 ./.venv/Scripts/python.exe ml/scripts/00_check_env.py          # 环境自检
-./.venv/Scripts/python.exe ml/scripts/18_capacity_engine.py    # 容量引擎（26 场地）
+./.venv/Scripts/python.exe ml/scripts/18_capacity_engine.py    # 容量引擎（24 个唯一地块 / 3456 车位）
+./.venv/Scripts/python.exe ml/scripts/21_capacity_sanity.py    # 容量自检（2m 去重）
+./.venv/Scripts/python.exe ml/scripts/22_capacity_calibrate.py <filled.csv>  # 真值校准
+./.venv/Scripts/python.exe ml/scripts/23_fetch_amap_poi.py     # 高德 POI（需 .env AMAP_KEY）
+./.venv/Scripts/python.exe ml/scripts/24_poi_demand_index.py   # 逐地块需求代理指标
 ./.venv/Scripts/python.exe ml/scripts/19_eval_three_domains.py <权重> <标签>  # 三域评估
 ./.venv/Scripts/python.exe ml/scripts/20_preannot_jl1.py --tif <影像.tif> --n 12  # JL1 预标注
 ```
@@ -123,15 +137,18 @@ doc/                   项目文档
 
 ## 五、文档权威顺序与更新要求
 
-- 进度与风险：**`doc/06-难度与工程量评估.md`**（以此为准）
-- 影像资产与质量结论：`doc/04-影像质量评估与决策记录.md`
-- 车辆检测全部实验与口径：`doc/05-DOTA预训练记录.md`
-- 规划与图源策略：`doc/01-项目规划与数据获取方案.md`
-- 执行计划：`doc/02-八周执行计划.md`
-- 新人入门/术语/GE 与标注操作：`doc/08-项目快速入门与技术路线.md`
-- VLM 能力边界：`doc/10-DeepSeek视觉模型探测记录.md`
+文档入口：`doc/README.md`（先读顺序、目录结构、旧链接映射）。
 
-**改动涉及以下内容时，必须同步文档**：影像/标注数量、模型权重与指标、推理配置、路线决策、进度状态。文档中禁止保留已被实验推翻的旧结论（应标注"已作废"或删除）。
+- **当前状态与风险**：`doc/current/status.md`（以此为准）
+- **时间线与里程碑**：`doc/current/roadmap.md`
+- **关键指标数字**：`doc/current/metrics.md`（唯一来源；其他文档不得复制数字）
+- **难度与工程量评估**：`doc/current/assessment.md`
+- **方法与操作**：`doc/methods/`（容量真值、POI、标注、环境）
+- **历史实验与审查快照**：`doc/records/`（带日期，只增不改；与 metrics 冲突时以 metrics 为准）
+- **背景与入门**：`doc/background/`
+- **过期文档**：`doc/archive/`（本地保留，Git 不追踪）
+
+**改动涉及以下内容时，必须同步文档**：影像/标注数量、模型权重与指标、推理配置、路线决策、进度状态。先更新 `current/metrics.md`，再更新 `current/status.md`；文档中禁止保留已被实验推翻的旧结论（应标注"已作废"或删除）。
 
 ---
 
@@ -150,9 +167,9 @@ doc/                   项目文档
 
 ## 七、当前关键路径（截至 2026-10-18）
 
-1. **容量真值采集：已搁置**。用户填报的真值文件在 2026-10-18 的文件替换中丢失，用户明确不再重填；**不要再要求用户填表**。容量保持"未校准（工程系数 + 区间）"口径，报告中如实写明。若将来有人提供 `truth_collection_filled.csv`，用 `ml/scripts/22_capacity_calibrate.py` 即可完成校准。
-2. **POI 空间评估**：高德 POI（需 API key）+ OSM 路网 → 需求代理指标。
-3. **Web 看板**：先用预计算 GeoJSON（`data/capacity/aoi_capacity_wgs84.geojson`）做 Leaflet 静态展示，再接 FastAPI。
+1. **容量真值采集：可以继续**。唯一空白工单是 `data/capacity/truth_collection_blind.csv`（24 行，含 `split`：17 calib / 7 test）。填写时**复制成新文件**（如 `truth_collection_filled_20261020.csv`），绝不要覆盖 blind 文件、`truth_collection_work_*.csv` 或他人已填文件；`22_capacity_calibrate.py` 会严格按 `split` 校准，缺 split 才随机 70/30。当前仍为 0 行填写，容量保持"未校准（工程系数 + 区间）"口径，报告中如实写明，直到有真值为止。
+2. **POI 空间评估：已完成**（23/24 号脚本，5812 个 POI / 24 地块需求指数）；数据按高德条款不入库。
+3. **Web 看板（当前首要交付缺口）**：先用预计算 GeoJSON（`data/capacity/aoi_capacity_wgs84.geojson`、`data/poi/aoi_capacity_poi_wgs84.geojson`）做 Leaflet 静态展示，再接 FastAPI。
 4. **车辆检测（降级为可选）**：JL1 域标注只做 3–4 窗口稀疏场景小试点；若无明显提升即冻结，结论写入报告。GE 标注已够用，不再扩标。
 5. **影像补充**：初秋景（2023-09-21）重新下载；10 月可申 4 景（优先北/西覆盖 + 独立验证区），到手 24h 内入库。
-6. **文件操作红线（事故后新增）**：永不删除/改名/覆盖用户可能已填写的文件；生成物一律用新文件名（时间戳或 `_generated`）；覆盖前先读内容并备份到 `data/capacity/backup/`。
+6. **文件操作红线（事故后新增，已由 `safe_io.py` 落实）**：永不删除/改名/覆盖用户可能已填写的文件；生成物一律用新文件名（时间戳或 `_generated`）；覆盖前先读内容并自动备份到 `data/capacity/backup/`；真值工单默认不由脚本生成。

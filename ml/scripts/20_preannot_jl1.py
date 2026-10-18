@@ -89,7 +89,7 @@ def main():
             arr = np.transpose(src.read([1, 2, 3], window=rasterio.windows.Window(c0, r0, size, size)), (1, 2, 0)).astype(np.uint8)
             if (arr.max(axis=2) < 8).mean() > 0.3:  # 死区过多跳过
                 continue
-            # DOTA 旧权重保持 RGB 输入（见 doc/11 P0-3）；不要改成 BGR
+            # DOTA 旧权重保持 RGB 输入（见 doc/records/audit-2026-10-17.md P0-3）；不要改成 BGR
             r = det(arr, conf=args.conf, iou=0.55, imgsz=size, max_det=2000, verbose=False)[0]
             pts = [] if r.obb is None else r.obb.xyxyxyxy.cpu().numpy()
             confs = [] if r.obb is None else r.obb.conf.cpu().numpy()

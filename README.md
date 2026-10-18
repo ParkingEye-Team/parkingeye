@@ -18,8 +18,8 @@ ParkingEye 面向高分辨率卫星/航空影像，自动识别城市露天停�
 ```
 parkingeye/
 ├── ml/          # 算法与训练：影像切片、OSM 标签、OBB 检测、分割、容量引擎
-│   ├── scripts/ # 分步脚本（00–20 + osm_utils + 并行下载器）
-│   └── tests/   # 回归测试（滑窗覆盖、通道、容量去重、georef）
+│   ├── scripts/ # 分步脚本（00–24 + osm_utils + safe_io + 并行下载器）
+│   └── tests/   # 回归测试（滑窗覆盖、通道、容量去重、校准 split、POI 坐标等 17 项）
 ├── backend/     # 后端服务与 API（尚未创建，规划中）
 ├── web/         # Web 看板前端（尚未创建，规划中）
 ├── assets/      # 视觉素材（图标、预览页）
@@ -29,7 +29,8 @@ parkingeye/
 
 > 遥感影像、训练权重、`.venv` 等大体积或可再生文件不入库，由 `.gitignore` 排除；数据文件按需在本地或团队共享盘获取。
 > 例外：`data/capacity/` 下的**轻量成果**（CSV / GeoJSON / meta / 缩略图）入库，便于 Web 与报告直接引用；大图与推理叠加图不入库。
-> 当前交付缺口：**Web 看板（Leaflet + 预计算 GeoJSON）尚未实现**，是剩余关键路径之一。
+> 高德 POI（`data/poi/`）按平台条款不入库，由 23/24 号脚本重建。
+> 当前交付缺口：**Web 看板（Leaflet + 预计算 GeoJSON）尚未实现**，是下一阶段首要任务。
 
 ## 技术栈
 
@@ -41,6 +42,25 @@ parkingeye/
 
 算法管线脚本位于 `ml/scripts/`，按 `00_check_env.py → 01_tile_imagery.py → …` 顺序执行；各脚本用法见文件头部 docstring，或参考 `doc/` 下的规划与规范文档。
 
+常用命令：
+
+```bash
+./.venv/Scripts/python.exe ml/scripts/18_capacity_engine.py   # 容量估计（默认 1024 推理，主口径）
+./.venv/Scripts/python.exe ml/scripts/21_capacity_sanity.py   # 容量自检（2m 去重）
+./.venv/Scripts/python.exe ml/scripts/23_fetch_amap_poi.py    # 高德 POI（需 .env AMAP_KEY）
+./.venv/Scripts/python.exe ml/scripts/24_poi_demand_index.py  # 逐地块需求代理指标
+./.venv/Scripts/python.exe ml/scripts/22_capacity_calibrate.py <filled.csv>  # 真值校准
+./.venv/Scripts/python.exe -m unittest discover -s ml/tests -v
+```
+
 ## 文档
 
-各阶段规划、执行计划、影像质量决策、标注规范等见 [`doc/`](doc/) 目录。
+文档入口见 [`doc/README.md`](doc/README.md)。结构按生命周期划分：
+
+- `doc/current/`：状态、路线图、**指标总表**、难度评估
+- `doc/methods/`：容量真值、POI、标注、环境
+- `doc/records/`：带日期的实验与审查快照
+- `doc/background/`：背景、规划、新人入门
+- `doc/archive/`：过期计划（本地保留，Git 不追踪）
+
+关键数字以 [`doc/current/metrics.md`](doc/current/metrics.md) 为唯一来源。

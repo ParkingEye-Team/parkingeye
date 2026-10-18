@@ -1,6 +1,6 @@
 """成都冬季影像车辆检测复测（修正版 2，替代初版）。
 
-修正点（对应 doc/05 第七节）：
+修正点（对应 doc/records/detection-2026-10.md 第七节）：
   1. OBB 结果从 res.obb 读取（初版误用 res.boxes，导致旋转框恒记 0）；
   2. 覆盖 conf 0.25 / 0.10 / 0.05 三档阈值；
   3. 每档保存预测叠加图（原图 + 旋转框）到 data/infer/winter_recheck_v2/，供人工复核；
@@ -61,7 +61,7 @@ def main():
                 name = Path(tp).stem
                 for variant, arr in _read_variants(src, c0, r0, tile):
                     for conf in CONFS:
-                        # 注意（doc/11 P0-3）：arr 是 rasterio 的 RGB。当前 DOTA 权重是在
+                        # 注意（doc/records/audit-2026-10-17.md P0-3）：arr 是 rasterio 的 RGB。当前 DOTA 权重是在
                         # “R/B 交换过”的训练图上学的，因此这里必须继续传 RGB 才能对齐；
                         # 不要改成 BGR（会把检出从 323 降到 138），除非重训 DOTA。
                         res = model(arr, conf=conf, imgsz=IMGSZ, max_det=MAX_DET, verbose=False)[0]

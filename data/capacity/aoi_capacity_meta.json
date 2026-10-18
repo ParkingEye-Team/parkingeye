@@ -26,6 +26,8 @@
     "osm_only": 0
   },
   "capacity_total_unique": 4039,
+  "capacity_excluded": 0,
+  "excluded_ids": [],
   "capacity_interval_unique": [
     3143,
     4711

@@ -214,6 +214,17 @@ def main():
     print(f"匹配去重: 唯一地块 {len(lots)} 个（其中双来源匹配 {matched} 对，已合并）")
 
     # 6) 容量计算（多布局区间，P1-5）
+    # 可选人工排除清单：data/capacity/exclude_lots.csv（lot_id,reason）
+    exclude_ids = set()
+    exclude_csv = OUT / "exclude_lots.csv"
+    if exclude_csv.exists():
+        with open(exclude_csv, encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                if r.get("lot_id"):
+                    exclude_ids.add(r["lot_id"].strip())
+        if exclude_ids:
+            print(f"人工排除清单: {len(exclude_ids)} 个地块 {sorted(exclude_ids)}")
+
     coef_v = COEF["垂直式"]; coef_d = COEF["斜列式"]; coef_p = COEF["平行式"]
     rows = []
     for lot in lots:
@@ -229,6 +240,7 @@ def main():
             "cap_para": round(a / coef_p),          # 平行 36
             "cap_min": round(a / coef_p),           # 区间下界 = 平行布局
             "cap_max": round(a / coef_d),           # 区间上界 = 斜列布局
+            "excluded": lot["id"] in exclude_ids,   # 人工判定为非停车场/不可计入
             "cx": round(rp.x, 1), "cy": round(rp.y, 1),
         })
     if not rows:  # P2-1 空结果保护
@@ -236,21 +248,23 @@ def main():
         with open(OUT / "aoi_capacity.csv", "w", newline="", encoding="utf-8") as f:
             csv.writer(f).writerow(["id", "source", "matched_id", "area_m2", "area_seg_m2",
                                     "area_osm_m2", "layout", "coef_m2", "capacity",
-                                    "cap_diag", "cap_para", "cap_min", "cap_max", "cx", "cy"])
+                                    "cap_diag", "cap_para", "cap_min", "cap_max", "excluded", "cx", "cy"])
         (OUT / "aoi_capacity_utm.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": []}, ensure_ascii=False), encoding="utf-8")
         (OUT / "aoi_capacity_wgs84.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": []}, ensure_ascii=False), encoding="utf-8")
         (OUT / "truth_collection_sheet.csv").write_text("lot_id,lon,lat,area_m2,model_capacity,true_capacity,layout_true,notes\n", encoding="utf-8-sig")
         (OUT / "aoi_capacity_meta.json").write_text(json.dumps({"counts": {"total": 0}, "capacity_total_unique": 0}, ensure_ascii=False, indent=2), encoding="utf-8")
         return
 
-    tot_cap = sum(r["capacity"] for r in rows)
-    tot_min = sum(r["cap_min"] for r in rows)
-    tot_max = sum(r["cap_max"] for r in rows)
+    active = [r for r in rows if not r["excluded"]]
+    excluded = [r for r in rows if r["excluded"]]
+    tot_cap = sum(r["capacity"] for r in active)
+    tot_min = sum(r["cap_min"] for r in active)
+    tot_max = sum(r["cap_max"] for r in active)
     by_src = {}
-    for r in rows:
+    for r in active:
         by_src[r["source"]] = by_src.get(r["source"], 0) + r["capacity"]
-    print(f"容量（唯一地块）: 默认(垂直28) {tot_cap}；布局区间 {tot_min}–{tot_max}")
-    print(f"  分来源: {by_src}")
+    print(f"容量（唯一地块，排除人工标记后）: 默认(垂直28) {tot_cap}；布局区间 {tot_min}–{tot_max}")
+    print(f"  分来源: {by_src}；排除 {len(excluded)} 个地块（{sum(r['capacity'] for r in excluded)} 车位）")
 
     # 7) 输出 GeoJSON / CSV / 预览图 / meta（P2-15 相对路径）
     feats_utm = [{"type": "Feature", "geometry": mapping(lot["geom"]), "properties": r}
@@ -285,13 +299,15 @@ def main():
         lon, lat = wtransform(UTM, WGS, [r["cx"]], [r["cy"]])
         truth_rows.append({
             "lot_id": r["id"], "lon": round(lon[0], 6), "lat": round(lat[0], 6),
-            "area_m2": r["area_m2"], "model_capacity": r["capacity"],
-            "true_capacity": "", "layout_true": "", "notes": "",
+            "area_m2": r["area_m2"], "is_parking": "", "true_capacity": "",
+            "layout_true": "", "notes": "", "collected_by": "", "date": "",
+            "model_capacity": r["capacity"],
         })
     truth_rows.sort(key=lambda x: -float(x["area_m2"]))
     with open(OUT / "truth_collection_sheet.csv", "w", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fieldnames=["lot_id", "lon", "lat", "area_m2", "model_capacity",
-                                          "true_capacity", "layout_true", "notes"])
+        w = csv.DictWriter(f, fieldnames=["lot_id", "lon", "lat", "area_m2", "is_parking",
+                                          "true_capacity", "layout_true", "notes",
+                                          "collected_by", "date", "model_capacity"])
         w.writeheader()
         w.writerows(truth_rows)
 
@@ -305,6 +321,8 @@ def main():
                    "seg_only": sum(1 for r in rows if r["source"] == "seg"),
                    "osm_only": sum(1 for r in rows if r["source"] == "osm")},
         "capacity_total_unique": tot_cap,
+        "capacity_excluded": sum(r["capacity"] for r in excluded),
+        "excluded_ids": [r["id"] for r in excluded],
         "capacity_interval_unique": [tot_min, tot_max],
         "capacity_by_source": by_src,
         "caveat": "布局为默认垂直式；cap_min/max 覆盖平行/斜列系数，属工程区间非统计置信区间；AOI 与标注训练区重叠，分割表现为 in-sample；真值未校准",

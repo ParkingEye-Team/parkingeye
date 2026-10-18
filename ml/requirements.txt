@@ -17,3 +17,5 @@ geopandas>=1.0
 # 标注辅助/视觉模型探测
 openai>=1.0
 PyYAML>=6.0
+# 高德 POI 拉取（23 号）
+requests>=2.32

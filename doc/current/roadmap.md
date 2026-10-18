@@ -1,6 +1,7 @@
 # 半年路线图（2026-10 → 2027-04）
 
 > 状态：current ｜ 最后更新：2026-10-18 ｜ 指标口径见 `doc/current/metrics.md`
+> 本文数字如与 metrics 冲突，以 metrics 为准。
 
 > 制定日期：2026-10-18
 > 适用：ParkingEye SRTP 项目（5 名大一学生 + AI）

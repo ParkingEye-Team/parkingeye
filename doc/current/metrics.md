@@ -1,8 +1,8 @@
 # 指标总表（唯一来源）
 
 > 状态：current ｜ 最后更新：2026-10-18 ｜ 维护：AI / 数据组
-> 规则：**全项目对外引用的关键数字以本表为准。** 其他文档只写口径和链接，不复制数字；重跑脚本后先更新本表，再更新 `status.md`。
-> 证据：容量 `data/capacity/aoi_capacity_meta.json`；自检 `data/capacity/capacity_sanity.csv`；三域评估 `data/infer/three_domain_eval/*.json`；POI `data/poi/poi_demand_meta.json`。
+> 规则：**全项目对外引用的关键数字以本表为准。** status/roadmap 可引用关键数字便于阅读，但如有冲突以本表为准；重跑脚本后先更新本表，再更新 `status.md`。
+> 证据：容量 `data/capacity/aoi_capacity_meta.json` + `data/capacity/seg_scale_sensitivity.json`；自检 `data/capacity/capacity_sanity.csv`；三域评估 `data/infer/three_domain_eval/*.json`；POI `data/poi/poi_demand_meta.json`。
 
 ---
 
@@ -31,6 +31,7 @@
 | 真值校准 | **未校准** | 盲采表 24 行、17 calib / 7 test、当前 0 行填写 |
 
 > 报告必须写：“24 个地块 / 3456 车位（分割边界口径，区间 2689–4030），未完成人工真值校准；来源敏感性 3456/3993/4039。”
+> 512 尺度两次对照的汇总证据：`data/capacity/seg_scale_sensitivity.json`；`compare_*` 原始目录按 `.gitignore` 不入库。
 
 ## 三、容量一致性自检
 
@@ -45,7 +46,7 @@
 
 | 指标 | 数值 | 口径 |
 |---|---:|---|
-| mask mAP50 | **0.8038** | 512 val；17 图 / 11 实例；随机网格，存在空间泄漏 |
+| mask mAP50 | **0.804** | 512 val；17 图 / 11 实例；batch=1 0.8038、batch=4 0.8042；随机网格，存在空间泄漏 |
 | mask mAP50 | **0.1724** | 1024 val；与训练尺度不一致，不能当部署精度 |
 | 跨季窗口命中率 | **83.3% 冬 / 65.2% 夏** | BGR 修正后 |
 | 容量主口径 | **1024** | 复现 24/3456；必须在报告中注明“部署尺度与验证尺度不一致” |

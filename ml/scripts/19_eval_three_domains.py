@@ -66,7 +66,21 @@ def window_detections(model, tif, windows, channel="rgb"):
 
 
 def infer_channel(weights):
-    return "bgr" if "ge_finetune" in str(weights).lower() else "rgb"
+    """按权重路径/同目录 args.yaml 推断通道；无法判断时默认 RGB 并告警。"""
+    s = str(weights).lower()
+    if "ge_finetune" in s or "ge_yolo" in s:
+        return "bgr"
+    if "dota" in s:
+        return "rgb"
+    args_yaml = Path(weights).parent.parent / "args.yaml"
+    if args_yaml.exists():
+        text = args_yaml.read_text(encoding="utf-8", errors="ignore").lower()
+        if "ge_finetune" in text or "ge_yolo" in text:
+            return "bgr"
+        if "dota" in text:
+            return "rgb"
+    print("[警告] 无法从权重路径/args.yaml 判断通道，默认 RGB；请用 --channel 指定")
+    return "rgb"
 
 
 def main():

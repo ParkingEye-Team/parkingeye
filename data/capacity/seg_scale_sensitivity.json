@@ -1,0 +1,73 @@
+{
+  "generated_at": "2026-10-18",
+  "source": "ml/scripts/18_capacity_engine.py",
+  "note": "容量尺度敏感性汇总；主口径为 1024。512 原始 compare_* 目录按 .gitignore 不入库，本文件保留可复核摘要。",
+  "runs": {
+    "main_1024_tile1024_stride768": {
+      "run_id": "20261018_224722_aae3271",
+      "seg_imgsz": 1024,
+      "seg_tile": 1024,
+      "seg_stride": 768,
+      "counts": {
+        "total": 24,
+        "both": 2,
+        "seg_only": 22,
+        "osm_only": 0
+      },
+      "capacity_total_unique": 3456,
+      "capacity_interval_unique": [
+        2689,
+        4030
+      ],
+      "capacity_source_sensitivity": {
+        "seg_boundary": 3456,
+        "osm_area_for_both": 3993,
+        "union_for_both": 4039
+      }
+    },
+    "compare_512_tile512_stride384": {
+      "run_id": "20261018_224705_aae3271",
+      "seg_imgsz": 512,
+      "seg_tile": 512,
+      "seg_stride": 384,
+      "counts": {
+        "total": 26,
+        "both": 1,
+        "seg_only": 24,
+        "osm_only": 1
+      },
+      "capacity_total_unique": 3640,
+      "capacity_interval_unique": [
+        2833,
+        4245
+      ],
+      "capacity_source_sensitivity": {
+        "seg_boundary": 3640,
+        "osm_area_for_both": 4017,
+        "union_for_both": 4056
+      }
+    },
+    "compare_512_tile512_stride256": {
+      "run_id": "20261018_224835_aae3271",
+      "seg_imgsz": 512,
+      "seg_tile": 512,
+      "seg_stride": 256,
+      "counts": {
+        "total": 37,
+        "both": 2,
+        "seg_only": 35,
+        "osm_only": 0
+      },
+      "capacity_total_unique": 4327,
+      "capacity_interval_unique": [
+        3366,
+        5052
+      ],
+      "capacity_source_sensitivity": {
+        "seg_boundary": 4327,
+        "osm_area_for_both": 4797,
+        "union_for_both": 4846
+      }
+    }
+  }
+}

@@ -14,7 +14,7 @@
   - aoi_capacity.csv           逐场地表（含 source/matched_id/多布局容量）
   - aoi_capacity_preview.png   容量专题图
   - aoi_capacity_meta.json     运行元数据（权重、参数、口径说明）
-  - truth_collection_sheet.csv 容量真值采集工单（唯一地块）
+  - truth_collection_sheet_generated_<run_id>.csv  （仅 --write-truth-sheet 生成；不再写 truth_collection_sheet.csv）
 
 用法:
   ./.venv/Scripts/python.exe ml/scripts/18_capacity_engine.py [--col 1603 --row 15201 --size 4096]

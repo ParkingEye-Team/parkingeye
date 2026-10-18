@@ -91,6 +91,11 @@ def load_excluded():
     return ids
 
 
+def is_excluded(props, exclude_ids):
+    """容量 GeoJSON 的 excluded 标记或 exclude_lots.csv 命中任一即跳过。"""
+    return bool(props.get("excluded") or props.get("id") in exclude_ids)
+
+
 def main():
     ap = argparse.ArgumentParser(description="POI 需求代理指标")
     ap.add_argument("--buffer", type=float, default=500, help="地块缓冲区半径（米），默认 500")
@@ -121,7 +126,7 @@ def main():
     skipped = []
     for f in features:
         props = f["properties"]
-        if props.get("excluded") or props.get("id") in exclude_ids:
+        if is_excluded(props, exclude_ids):
             skipped.append(props.get("id"))
             continue
         lot_poly = shp_transform(lambda x, y, z=None: proj(x, y), shape(f["geometry"]))

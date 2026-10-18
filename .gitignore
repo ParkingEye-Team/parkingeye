@@ -49,6 +49,8 @@ data/jl1_annot/*/work/
 # 用户填写的真值/工作副本/备份不入库（可能含个人信息）
 data/capacity/truth_collection_filled*.csv
 data/capacity/truth_collection_work_*.csv
+# 旧的非盲工单不再生成；生成的工单带 run_id，不入库（唯一工单是 blind）
+data/capacity/truth_collection_sheet*.csv
 data/capacity/backup/
 data/capacity/compare_*/
 data/capacity/*.png

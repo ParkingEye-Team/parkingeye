@@ -186,6 +186,17 @@ class TestCalibrationContract(unittest.TestCase):
             mod.resolve_split(rows)
 
 
+class TestEvalChannel(unittest.TestCase):
+    """19 号：GE 权重自动 BGR，DOTA 权重自动 RGB。"""
+
+    def test_infer_channel(self):
+        mod = load_script("19_eval_three_domains.py")
+        self.assertEqual(
+            mod.infer_channel("runs/obb/ge_finetune_v3/weights/best.pt"), "bgr")
+        self.assertEqual(
+            mod.infer_channel("runs/obb/dota_vehicle_obb/weights/best.pt"), "rgb")
+
+
 class TestSanityDedup(unittest.TestCase):
     """doc/records/audit-2026-10-18.md P1-2：跨窗口检出必须能按距离去重。"""
 
@@ -220,6 +231,12 @@ class TestPoiExcluded(unittest.TestCase):
                 self.assertEqual(mod.load_excluded(), {"seg_001"})
             finally:
                 mod.CAP_DIR = old
+
+    def test_is_excluded(self):
+        mod = load_script("24_poi_demand_index.py")
+        self.assertTrue(mod.is_excluded({"id": "seg_001"}, {"seg_001"}))
+        self.assertTrue(mod.is_excluded({"id": "seg_002", "excluded": True}, set()))
+        self.assertFalse(mod.is_excluded({"id": "seg_003"}, set()))
 
 
 class TestSafeIo(unittest.TestCase):

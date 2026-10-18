@@ -18,16 +18,16 @@
 发生冲突时，按以下顺序取信：
 
 ```
-current/status.md      （当前状态）
+current/metrics.md     （所有指标数字；数字冲突时以此为准）
+  > current/status.md  （当前状态）
   > current/roadmap.md （当前计划）
-  > current/metrics.md （指标数字）
   > methods/*.md       （方法与操作口径）
   > records/*.md       （带日期的实验/审查快照，只增不改）
   > background/*.md    （背景与入门）
   > archive/           （已过期，仅本地保留，不追踪）
 ```
 
-`records/` 里的数字如果与 `metrics.md` 冲突，以 `metrics.md` 为准；records 只用于追溯“当时为什么这么判断”。
+`status.md`/`roadmap.md` 为便于阅读会引用关键数字；如与 `metrics.md` 冲突，一律以 `metrics.md` 为准。`records/` 里的数字只用于追溯“当时为什么这么判断”。
 
 ---
 

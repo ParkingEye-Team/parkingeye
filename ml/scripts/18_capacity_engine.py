@@ -52,6 +52,7 @@ TILE, STRIDE = 1024, 768
 CONF = 0.25
 MATCH_MIN_RATIO = 0.50    # 跨来源重叠占较小者比例 >= 该值 -> 视为同一地块（包含关系优先）
 MATCH_MIN_IOU = 0.15      # IoU 门槛放宽：OSM 与分割边界大小不一，IoU 会天然偏低
+OSM_OVERSEG_RATIO = 1.5   # OSM 面积 / 分割面积 超过该值 -> 视为 OSM 边界过宽，改用分割面积计容量
 
 
 def tile_positions(size, tile, stride):
@@ -82,7 +83,8 @@ def safe_area(g):
 def merge_lots(seg_polys, osm_polys, min_ratio=MATCH_MIN_RATIO, min_iou=MATCH_MIN_IOU):
     """跨来源匹配去重：同一物理地块只保留一条，几何取并集。
 
-    返回 list[dict]: id, source(seg/osm/both), matched_id, geom, area_seg, area_osm
+    返回 list[dict]: id, source(seg/osm/both), matched_id, geom, geom_seg, geom_osm,
+                     area_seg, area_osm
     """
     used_seg = set()
     lots = []
@@ -111,20 +113,41 @@ def merge_lots(seg_polys, osm_polys, min_ratio=MATCH_MIN_RATIO, min_iou=MATCH_MI
             lots.append({
                 "id": f"seg_{best_i:03d}", "source": "both",
                 "matched_id": f"osm_{j:02d}:{osm_id}",
-                "geom": merged, "area_seg": g_seg.area, "area_osm": g_osm.area,
+                "geom": merged, "geom_seg": g_seg, "geom_osm": g_osm,
+                "area_seg": g_seg.area, "area_osm": g_osm.area,
             })
         else:
             lots.append({
                 "id": f"osm_{j:02d}", "source": "osm", "matched_id": "",
-                "geom": g_osm, "area_seg": 0.0, "area_osm": g_osm.area,
+                "geom": g_osm, "geom_seg": None, "geom_osm": g_osm,
+                "area_seg": 0.0, "area_osm": g_osm.area,
             })
     for i, g in enumerate(seg_polys):
         if i not in used_seg:
             lots.append({
                 "id": f"seg_{i:03d}", "source": "seg", "matched_id": "",
-                "geom": g, "area_seg": g.area, "area_osm": 0.0,
+                "geom": g, "geom_seg": g, "geom_osm": None,
+                "area_seg": g.area, "area_osm": 0.0,
             })
     return lots
+
+
+def choose_geom(lot, over_ratio=OSM_OVERSEG_RATIO):
+    """选择计容量用的几何，并返回面积来源标记。
+
+    - 双来源且 OSM 面积 / 分割面积 > over_ratio：OSM 边界过宽（可能混入堆场/空地），
+      改用分割几何，area_source='seg'；
+    - 双来源且比例正常：用并集，area_source='union'；
+    - 单来源：沿用自身，area_source='seg'/'osm'。
+    """
+    if lot["source"] == "both":
+        ratio = lot["area_osm"] / max(lot["area_seg"], 1e-9)
+        if ratio > over_ratio:
+            return lot["geom_seg"], "seg", ratio
+        return lot["geom"], "union", ratio
+    if lot["source"] == "seg":
+        return lot["geom"], "seg", 1.0
+    return lot["geom"], "osm", 1.0
 
 
 def main():
@@ -208,10 +231,20 @@ def main():
             osm_polys.append((e.get("id"), g_utm))
     print(f"OSM 多边形(AOI 内): {len(osm_polys)} 个")
 
-    # 5) 跨来源匹配去重（P0-1）：同一物理地块只保留一条，几何取并集
+    # 5) 跨来源匹配去重（P0-1）：同一物理地块只保留一条
     lots = merge_lots(seg_polys, osm_polys, MATCH_MIN_RATIO, MATCH_MIN_IOU)
     matched = sum(1 for x in lots if x["source"] == "both")
-    print(f"匹配去重: 唯一地块 {len(lots)} 个（其中双来源匹配 {matched} 对，已合并）")
+    # 5.1) OSM 边界过宽时改用分割几何（避免把堆场/空地算进容量）
+    n_overse = 0
+    for lot in lots:
+        g, src, ratio = choose_geom(lot, OSM_OVERSEG_RATIO)
+        lot["geom_final"] = g
+        lot["area_source"] = src
+        lot["osm_over_seg_ratio"] = round(ratio, 3)
+        if lot["source"] == "both" and src == "seg":
+            n_overse += 1
+    print(f"匹配去重: 唯一地块 {len(lots)} 个（双来源匹配 {matched} 对；"
+          f"OSM 边界过宽改用分割 {n_overse} 个）")
 
     # 6) 容量计算（多布局区间，P1-5）
     # 可选人工排除清单：data/capacity/exclude_lots.csv（lot_id,reason）
@@ -228,12 +261,13 @@ def main():
     coef_v = COEF["垂直式"]; coef_d = COEF["斜列式"]; coef_p = COEF["平行式"]
     rows = []
     for lot in lots:
-        a = lot["geom"].area
-        rp = lot["geom"].representative_point()
+        a = lot["geom_final"].area
+        rp = lot["geom_final"].representative_point()
         rows.append({
             "id": lot["id"], "source": lot["source"], "matched_id": lot["matched_id"],
-            "area_m2": round(a, 1),
+            "area_m2": round(a, 1), "area_source": lot["area_source"],
             "area_seg_m2": round(lot["area_seg"], 1), "area_osm_m2": round(lot["area_osm"], 1),
+            "osm_over_seg_ratio": lot["osm_over_seg_ratio"],
             "layout": DEFAULT_LAYOUT, "coef_m2": coef_v,
             "capacity": round(a / coef_v),          # 默认按垂直式
             "cap_diag": round(a / coef_d),          # 斜列 24
@@ -246,9 +280,10 @@ def main():
     if not rows:  # P2-1 空结果保护
         print("警告：AOI 内没有有效停车场多边形，写出空产物")
         with open(OUT / "aoi_capacity.csv", "w", newline="", encoding="utf-8") as f:
-            csv.writer(f).writerow(["id", "source", "matched_id", "area_m2", "area_seg_m2",
-                                    "area_osm_m2", "layout", "coef_m2", "capacity",
-                                    "cap_diag", "cap_para", "cap_min", "cap_max", "excluded", "cx", "cy"])
+            csv.writer(f).writerow(["id", "source", "matched_id", "area_m2", "area_source",
+                                    "area_seg_m2", "area_osm_m2", "osm_over_seg_ratio",
+                                    "layout", "coef_m2", "capacity", "cap_diag", "cap_para",
+                                    "cap_min", "cap_max", "excluded", "cx", "cy"])
         (OUT / "aoi_capacity_utm.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": []}, ensure_ascii=False), encoding="utf-8")
         (OUT / "aoi_capacity_wgs84.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": []}, ensure_ascii=False), encoding="utf-8")
         (OUT / "truth_collection_sheet.csv").write_text("lot_id,lon,lat,area_m2,model_capacity,true_capacity,layout_true,notes\n", encoding="utf-8-sig")
@@ -267,12 +302,12 @@ def main():
     print(f"  分来源: {by_src}；排除 {len(excluded)} 个地块（{sum(r['capacity'] for r in excluded)} 车位）")
 
     # 7) 输出 GeoJSON / CSV / 预览图 / meta（P2-15 相对路径）
-    feats_utm = [{"type": "Feature", "geometry": mapping(lot["geom"]), "properties": r}
+    feats_utm = [{"type": "Feature", "geometry": mapping(lot["geom_final"]), "properties": r}
                  for lot, r in zip(lots, rows)]
     (OUT / "aoi_capacity_utm.geojson").write_text(
         json.dumps({"type": "FeatureCollection", "crs": {"type": "name", "properties": {"name": UTM}},
                     "features": feats_utm}, ensure_ascii=False), encoding="utf-8")
-    feats_wgs = [{"type": "Feature", "geometry": transform_geom(UTM, WGS, mapping(lot["geom"])), "properties": r}
+    feats_wgs = [{"type": "Feature", "geometry": transform_geom(UTM, WGS, mapping(lot["geom_final"])), "properties": r}
                  for lot, r in zip(lots, rows)]
     (OUT / "aoi_capacity_wgs84.geojson").write_text(
         json.dumps({"type": "FeatureCollection", "features": feats_wgs}, ensure_ascii=False), encoding="utf-8")
@@ -287,7 +322,7 @@ def main():
     font = load_font(20)
     for lot, r in zip(lots, rows):
         color = (0, 230, 110) if lot["source"] == "seg" else ((255, 150, 0) if lot["source"] == "osm" else (0, 180, 255))
-        xy = [(float(x), float(y)) for x, y in lot["geom"].exterior.coords]
+        xy = [(float(x), float(y)) for x, y in lot["geom_final"].exterior.coords]
         px = [(int((x - wt.c) / wt.a), int((y - wt.f) / wt.e)) for x, y in xy]
         dr.line(px, fill=color, width=2)
         dr.text((px[0][0] + 3, px[0][1] + 3), f"{r['capacity']}", fill=color, font=font)
@@ -316,7 +351,10 @@ def main():
         "tif": TIF.name, "seg_weights": str(SEG_W.relative_to(ROOT)),
         "aoi": [col, row, size], "conf": CONF, "min_area_m2": MIN_AREA,
         "coef_table": COEF, "default_layout": DEFAULT_LAYOUT,
-        "match_rule": {"min_overlap_ratio": MATCH_MIN_RATIO, "min_iou": MATCH_MIN_IOU},
+        "match_rule": {"min_overlap_ratio": MATCH_MIN_RATIO, "min_iou": MATCH_MIN_IOU,
+                       "osm_overseg_ratio": OSM_OVERSEG_RATIO},
+        "area_source_counts": {k: sum(1 for r in rows if r["area_source"] == k)
+                               for k in ("seg", "union", "osm")},
         "counts": {"total": len(rows), "both": matched,
                    "seg_only": sum(1 for r in rows if r["source"] == "seg"),
                    "osm_only": sum(1 for r in rows if r["source"] == "osm")},

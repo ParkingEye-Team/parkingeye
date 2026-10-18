@@ -17,7 +17,13 @@
   "default_layout": "垂直式",
   "match_rule": {
     "min_overlap_ratio": 0.5,
-    "min_iou": 0.15
+    "min_iou": 0.15,
+    "osm_overseg_ratio": 1.5
+  },
+  "area_source_counts": {
+    "seg": 24,
+    "union": 0,
+    "osm": 0
   },
   "counts": {
     "total": 24,
@@ -25,15 +31,15 @@
     "seg_only": 22,
     "osm_only": 0
   },
-  "capacity_total_unique": 4039,
+  "capacity_total_unique": 3456,
   "capacity_excluded": 0,
   "excluded_ids": [],
   "capacity_interval_unique": [
-    3143,
-    4711
+    2689,
+    4030
   ],
   "capacity_by_source": {
-    "both": 1264,
+    "both": 681,
     "seg": 2775
   },
   "caveat": "布局为默认垂直式；cap_min/max 覆盖平行/斜列系数，属工程区间非统计置信区间；AOI 与标注训练区重叠，分割表现为 in-sample；真值未校准"

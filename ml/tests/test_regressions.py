@@ -75,6 +75,35 @@ class TestCapacityMerge(unittest.TestCase):
         self.assertEqual({x["source"] for x in lots}, {"seg", "osm"})
 
 
+class TestAreaSourceRule(unittest.TestCase):
+    """OSM 边界过宽时改用分割面积（2026-10-17 规则）。"""
+
+    def test_overseg_osm_uses_seg_geometry(self):
+        mod = load_script("18_capacity_engine.py")
+        lot = {
+            "source": "both", "area_seg": 10000.0, "area_osm": 20000.0,
+            "geom": box(0, 0, 200, 100),      # 并集
+            "geom_seg": box(0, 0, 100, 100),  # 分割
+            "geom_osm": box(0, 0, 200, 100),
+        }
+        g, src, ratio = mod.choose_geom(lot, 1.5)
+        self.assertEqual(src, "seg")
+        self.assertAlmostEqual(g.area, 10000.0)
+        self.assertAlmostEqual(ratio, 2.0)
+
+    def test_normal_ratio_uses_union(self):
+        mod = load_script("18_capacity_engine.py")
+        lot = {
+            "source": "both", "area_seg": 10000.0, "area_osm": 11000.0,
+            "geom": box(0, 0, 110, 100),
+            "geom_seg": box(0, 0, 100, 100),
+            "geom_osm": box(10, 0, 110, 100),
+        }
+        g, src, ratio = mod.choose_geom(lot, 1.5)
+        self.assertEqual(src, "union")
+        self.assertAlmostEqual(g.area, 11000.0)
+
+
 class TestChannelRoundtrip(unittest.TestCase):
     """P0-3：通道写盘/读回约定。"""
 

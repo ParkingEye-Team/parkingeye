@@ -22,6 +22,7 @@
 import argparse
 import csv
 import json
+from datetime import datetime
 from pathlib import Path
 
 import cv2
@@ -34,6 +35,7 @@ from rasterio.warp import transform_geom, transform as wtransform
 from shapely.geometry import shape, mapping, Polygon
 from ultralytics import YOLO
 from osm_utils import is_surface_parking
+from safe_io import backup_file, run_id, write_csv_safe, write_json_safe
 
 ROOT = Path(__file__).resolve().parents[2]
 TIF = ROOT / "data/imagery/JL1KF01C/JL1KF01C_PMSL2_20231218114103_200220439_101_0022_001_L3D_PSH" \
@@ -48,7 +50,9 @@ WGS = "EPSG:4326"
 COEF = {"垂直式": 28, "斜列式": 24, "平行式": 36, "不规则": 32}
 DEFAULT_LAYOUT = "垂直式"
 MIN_AREA = 200.0          # m²，过滤小噪点
-TILE, STRIDE = 1024, 768
+SEG_IMGSZ = 1024          # 主口径：1024 在 AOI 上稳定复现 24 地块/3456；512 会漏 1 个地块（见 doc/records/audit-2026-10-18.md 修复记录）
+TILE = None               # 默认等于 SEG_IMGSZ
+STRIDE = None             # 默认 0.75 * TILE
 CONF = 0.25
 MATCH_MIN_RATIO = 0.50    # 跨来源重叠占较小者比例 >= 该值 -> 视为同一地块（包含关系优先）
 MATCH_MIN_IOU = 0.15      # IoU 门槛放宽：OSM 与分割边界大小不一，IoU 会天然偏低
@@ -155,8 +159,20 @@ def main():
     ap.add_argument("--col", type=int, default=1603)
     ap.add_argument("--row", type=int, default=15201)
     ap.add_argument("--size", type=int, default=4096)
+    ap.add_argument("--seg-imgsz", type=int, default=SEG_IMGSZ,
+                    help="分割推理尺度，默认 1024（主口径）；512 可复现验证集指标但会漏 1 个地块")
+    ap.add_argument("--tile", type=int, default=None, help="滑窗边长，默认等于 --seg-imgsz")
+    ap.add_argument("--stride", type=int, default=None, help="滑窗步长，默认 0.75*tile")
+    ap.add_argument("--out-dir", default=str(OUT), help="输出目录，默认 data/capacity")
+    ap.add_argument("--write-truth-sheet", action="store_true",
+                    help="额外生成带时间戳的真值工单（绝不覆盖 truth_collection_blind.csv）")
     args = ap.parse_args()
-    OUT.mkdir(parents=True, exist_ok=True)
+    out = Path(args.out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    tile_size = args.tile or args.seg_imgsz
+    stride = args.stride or int(tile_size * 0.75)
+    rid = run_id()
+    print(f"run_id={rid} | seg_imgsz={args.seg_imgsz} | tile={tile_size} | stride={stride} | out={out}")
 
     # 1) 读 AOI 影像（先钳制边界，P2-2）
     with rasterio.open(TIF) as src:
@@ -173,21 +189,22 @@ def main():
     # 2) 分割滑窗推理 -> 掩膜（BGR，训练约定；P0-2）
     seg = YOLO(str(SEG_W))
     mask = np.zeros((size, size), np.uint8)
-    poss = tile_positions(size, TILE, STRIDE)
+    poss = tile_positions(size, tile_size, stride)
     n_tiles = 0
     for y0 in poss:
         for x0 in poss:
-            tile = arr[y0:y0 + TILE, x0:x0 + TILE]
-            if tile.shape[0] != TILE or tile.shape[1] != TILE:
+            tile = arr[y0:y0 + tile_size, x0:x0 + tile_size]
+            if tile.shape[0] != tile_size or tile.shape[1] != tile_size:
                 continue
             bgr = np.ascontiguousarray(tile[:, :, ::-1])
-            r = seg(bgr, imgsz=TILE, conf=CONF, verbose=False)[0]
+            r = seg(bgr, imgsz=args.seg_imgsz, conf=CONF, verbose=False)[0]
             n_tiles += 1
             if r.masks is not None:
                 for m in r.masks.data.cpu().numpy():
-                    mm = cv2.resize((m * 255).astype(np.uint8), (TILE, TILE), interpolation=cv2.INTER_NEAREST)
-                    region = mask[y0:y0 + TILE, x0:x0 + TILE]
-                    mask[y0:y0 + TILE, x0:x0 + TILE] = np.maximum(region, mm)
+                    mm = cv2.resize((m * 255).astype(np.uint8), (tile_size, tile_size),
+                                    interpolation=cv2.INTER_NEAREST)
+                    region = mask[y0:y0 + tile_size, x0:x0 + tile_size]
+                    mask[y0:y0 + tile_size, x0:x0 + tile_size] = np.maximum(region, mm)
     print(f"分割推理: {n_tiles} 切片, 掩膜覆盖 {mask.mean()/255*100:.1f}%")
 
     # 3) 分割矢量（UTM）
@@ -279,15 +296,20 @@ def main():
         })
     if not rows:  # P2-1 空结果保护
         print("警告：AOI 内没有有效停车场多边形，写出空产物")
-        with open(OUT / "aoi_capacity.csv", "w", newline="", encoding="utf-8") as f:
-            csv.writer(f).writerow(["id", "source", "matched_id", "area_m2", "area_source",
-                                    "area_seg_m2", "area_osm_m2", "osm_over_seg_ratio",
-                                    "layout", "coef_m2", "capacity", "cap_diag", "cap_para",
-                                    "cap_min", "cap_max", "excluded", "cx", "cy"])
-        (OUT / "aoi_capacity_utm.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": []}, ensure_ascii=False), encoding="utf-8")
-        (OUT / "aoi_capacity_wgs84.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": []}, ensure_ascii=False), encoding="utf-8")
-        (OUT / "truth_collection_sheet.csv").write_text("lot_id,lon,lat,area_m2,model_capacity,true_capacity,layout_true,notes\n", encoding="utf-8-sig")
-        (OUT / "aoi_capacity_meta.json").write_text(json.dumps({"counts": {"total": 0}, "capacity_total_unique": 0}, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_csv_safe(out / "aoi_capacity.csv", [], fieldnames=[
+            "id", "source", "matched_id", "area_m2", "area_source",
+            "area_seg_m2", "area_osm_m2", "osm_over_seg_ratio",
+            "layout", "coef_m2", "capacity", "cap_diag", "cap_para",
+            "cap_min", "cap_max", "excluded", "cx", "cy"],
+            encoding="utf-8", tag="capacity")
+        empty = {"type": "FeatureCollection", "features": []}
+        write_json_safe(out / "aoi_capacity_utm.geojson", empty,
+                        indent=None, tag="capacity")
+        write_json_safe(out / "aoi_capacity_wgs84.geojson", empty,
+                        indent=None, tag="capacity")
+        write_json_safe(out / "aoi_capacity_meta.json",
+                        {"run_id": rid, "counts": {"total": 0},
+                         "capacity_total_unique": 0}, tag="capacity")
         return
 
     active = [r for r in rows if not r["excluded"]]
@@ -301,20 +323,50 @@ def main():
     print(f"容量（唯一地块，排除人工标记后）: 默认(垂直28) {tot_cap}；布局区间 {tot_min}–{tot_max}")
     print(f"  分来源: {by_src}；排除 {len(excluded)} 个地块（{sum(r['capacity'] for r in excluded)} 车位）")
 
+    # 6.1) 边界来源敏感性：双来源地块若改用 OSM / 并集面积，总容量会变多少
+    alt_osm = 0
+    alt_union = 0
+    for lot, r in zip(lots, rows):
+        if r["excluded"]:
+            continue
+        if lot["source"] == "both":
+            alt_osm += round(lot["area_osm"] / coef_v)
+            alt_union += round(lot["geom"].area / coef_v)
+        else:
+            alt_osm += r["capacity"]
+            alt_union += r["capacity"]
+    print(f"  来源敏感性: 当前分割边界 {tot_cap} | 双来源改用 OSM {alt_osm} | 改用并集 {alt_union}")
+
+    # 6.2) 最终地块残留重叠检测（P1-1）
+    overlap_pairs = []
+    for i in range(len(rows)):
+        for j in range(i + 1, len(rows)):
+            a, b = rows[i], rows[j]
+            ga, gb = lots[i]["geom_final"], lots[j]["geom_final"]
+            try:
+                inter = ga.intersection(gb).area
+            except Exception:
+                continue
+            small = min(ga.area, gb.area)
+            if small > 0 and inter / small > 0.05:
+                overlap_pairs.append({"a": a["id"], "b": b["id"],
+                                      "overlap_ratio": round(inter / small, 3)})
+    if overlap_pairs:
+        print(f"  警告：{len(overlap_pairs)} 对地块重叠 >5%: {overlap_pairs[:5]}")
+
     # 7) 输出 GeoJSON / CSV / 预览图 / meta（P2-15 相对路径）
     feats_utm = [{"type": "Feature", "geometry": mapping(lot["geom_final"]), "properties": r}
                  for lot, r in zip(lots, rows)]
-    (OUT / "aoi_capacity_utm.geojson").write_text(
-        json.dumps({"type": "FeatureCollection", "crs": {"type": "name", "properties": {"name": UTM}},
-                    "features": feats_utm}, ensure_ascii=False), encoding="utf-8")
+    write_json_safe(out / "aoi_capacity_utm.geojson",
+                    {"type": "FeatureCollection",
+                     "crs": {"type": "name", "properties": {"name": UTM}},
+                     "features": feats_utm}, indent=None, tag="capacity")
     feats_wgs = [{"type": "Feature", "geometry": transform_geom(UTM, WGS, mapping(lot["geom_final"])), "properties": r}
                  for lot, r in zip(lots, rows)]
-    (OUT / "aoi_capacity_wgs84.geojson").write_text(
-        json.dumps({"type": "FeatureCollection", "features": feats_wgs}, ensure_ascii=False), encoding="utf-8")
-    with open(OUT / "aoi_capacity.csv", "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        w.writeheader()
-        w.writerows(rows)
+    write_json_safe(out / "aoi_capacity_wgs84.geojson",
+                    {"type": "FeatureCollection", "features": feats_wgs},
+                    indent=None, tag="capacity")
+    write_csv_safe(out / "aoi_capacity.csv", rows, encoding="utf-8", tag="capacity")
 
     # 预览图
     img = Image.fromarray(arr)
@@ -326,30 +378,37 @@ def main():
         px = [(int((x - wt.c) / wt.a), int((y - wt.f) / wt.e)) for x, y in xy]
         dr.line(px, fill=color, width=2)
         dr.text((px[0][0] + 3, px[0][1] + 3), f"{r['capacity']}", fill=color, font=font)
-    img.save(OUT / "aoi_capacity_preview.png")
+    backup_file(out / "aoi_capacity_preview.png", tag="capacity")
+    img.save(out / "aoi_capacity_preview.png")
 
-    # 8) 真值采集工单（唯一地块，含经纬度）
-    truth_rows = []
-    for lot, r in zip(lots, rows):
-        lon, lat = wtransform(UTM, WGS, [r["cx"]], [r["cy"]])
-        truth_rows.append({
-            "lot_id": r["id"], "lon": round(lon[0], 6), "lat": round(lat[0], 6),
-            "area_m2": r["area_m2"], "is_parking": "", "facility_type": "",
-            "true_capacity": "", "layout_true": "", "notes": "", "collected_by": "", "date": "",
-            "model_capacity": r["capacity"],
-        })
-    truth_rows.sort(key=lambda x: -float(x["area_m2"]))
-    with open(OUT / "truth_collection_sheet.csv", "w", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fieldnames=["lot_id", "lon", "lat", "area_m2", "is_parking",
-                                          "facility_type", "true_capacity", "layout_true", "notes",
-                                          "collected_by", "date", "model_capacity"])
-        w.writeheader()
-        w.writerows(truth_rows)
+    # 8) 真值采集工单：默认不生成，避免覆盖用户文件；需要时写带时间戳的新文件
+    if args.write_truth_sheet:
+        truth_rows = []
+        for lot, r in zip(lots, rows):
+            lon, lat = wtransform(UTM, WGS, [r["cx"]], [r["cy"]])
+            truth_rows.append({
+                "lot_id": r["id"], "lon": round(lon[0], 6), "lat": round(lat[0], 6),
+                "area_m2": r["area_m2"], "is_parking": "", "facility_type": "",
+                "true_capacity": "", "layout_true": "", "notes": "", "collected_by": "", "date": "",
+                "model_capacity": r["capacity"], "excluded": r["excluded"],
+            })
+        truth_rows.sort(key=lambda x: -float(x["area_m2"]))
+        truth_path = out / f"truth_collection_sheet_generated_{rid}.csv"
+        write_csv_safe(truth_path, truth_rows, fieldnames=[
+            "lot_id", "lon", "lat", "area_m2", "is_parking", "facility_type",
+            "true_capacity", "layout_true", "notes", "collected_by", "date",
+            "model_capacity", "excluded"], tag="truth", backup=False)
+        print(f"真值工单（新文件）: {truth_path}")
 
     # 9) meta
-    (OUT / "aoi_capacity_meta.json").write_text(json.dumps({
+    write_json_safe(out / "aoi_capacity_meta.json", {
+        "run_id": rid,
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
         "tif": TIF.name, "seg_weights": str(SEG_W.relative_to(ROOT)),
-        "aoi": [col, row, size], "conf": CONF, "min_area_m2": MIN_AREA,
+        "aoi": [col, row, size],
+        "seg_conf": CONF, "seg_imgsz": args.seg_imgsz,
+        "seg_tile": tile_size, "seg_stride": stride,
+        "min_area_m2": MIN_AREA,
         "coef_table": COEF, "default_layout": DEFAULT_LAYOUT,
         "match_rule": {"min_overlap_ratio": MATCH_MIN_RATIO, "min_iou": MATCH_MIN_IOU,
                        "osm_overseg_ratio": OSM_OVERSEG_RATIO},
@@ -363,10 +422,16 @@ def main():
         "excluded_ids": [r["id"] for r in excluded],
         "capacity_interval_unique": [tot_min, tot_max],
         "capacity_by_source": by_src,
-        "caveat": "布局为默认垂直式；cap_min/max 覆盖平行/斜列系数，属工程区间非统计置信区间；AOI 与标注训练区重叠，分割表现为 in-sample；真值未校准",
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"输出 -> {OUT}")
-    print("  aoi_capacity_preview.png / .csv / _utm.geojson / _wgs84.geojson / _meta.json / truth_collection_sheet.csv")
+        "capacity_source_sensitivity": {
+            "seg_boundary": tot_cap, "osm_area_for_both": alt_osm,
+            "union_for_both": alt_union},
+        "overlap_pairs_gt5pct": overlap_pairs,
+        "caveat": "布局为默认垂直式；cap_min/max 覆盖平行/斜列系数，属工程区间非统计置信区间；"
+                  "AOI 与标注训练区重叠，分割表现为 in-sample；真值未校准；"
+                  "capacity_total_unique 为分割边界口径，source_sensitivity 给出改用 OSM/并集的对照。",
+    }, tag="capacity")
+    print(f"输出 -> {out}")
+    print("  aoi_capacity_preview.png / .csv / _utm.geojson / _wgs84.geojson / _meta.json")
 
 
 if __name__ == "__main__":

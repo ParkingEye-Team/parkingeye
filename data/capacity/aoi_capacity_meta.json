@@ -1,4 +1,6 @@
 {
+  "run_id": "20261018_224722_aae3271",
+  "generated_at": "2026-10-18T22:47:26",
   "tif": "JL1KF01C_PMSL2_20231218114103_200220439_101_0022_001_L3D_PSH.tif",
   "seg_weights": "runs\\segment\\parking_seg_night\\weights\\best.pt",
   "aoi": [
@@ -6,7 +8,10 @@
     15201,
     4096
   ],
-  "conf": 0.25,
+  "seg_conf": 0.25,
+  "seg_imgsz": 1024,
+  "seg_tile": 1024,
+  "seg_stride": 768,
   "min_area_m2": 200.0,
   "coef_table": {
     "垂直式": 28,
@@ -42,5 +47,11 @@
     "both": 681,
     "seg": 2775
   },
-  "caveat": "布局为默认垂直式；cap_min/max 覆盖平行/斜列系数，属工程区间非统计置信区间；AOI 与标注训练区重叠，分割表现为 in-sample；真值未校准"
+  "capacity_source_sensitivity": {
+    "seg_boundary": 3456,
+    "osm_area_for_both": 3993,
+    "union_for_both": 4039
+  },
+  "overlap_pairs_gt5pct": [],
+  "caveat": "布局为默认垂直式；cap_min/max 覆盖平行/斜列系数，属工程区间非统计置信区间；AOI 与标注训练区重叠，分割表现为 in-sample；真值未校准；capacity_total_unique 为分割边界口径，source_sensitivity 给出改用 OSM/并集的对照。"
 }

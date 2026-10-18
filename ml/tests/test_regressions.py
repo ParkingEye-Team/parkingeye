@@ -1,4 +1,4 @@
-"""回归测试：覆盖 2026-10-17 审查（doc/11）中的关键 P0/P1 修复点。
+"""回归测试：覆盖 2026-10-17 审查（doc/records/audit-2026-10-17.md）中的关键 P0/P1 修复点。
 
 运行:
   ./.venv/Scripts/python.exe -m unittest discover -s ml/tests -v
@@ -135,6 +135,111 @@ class TestTileGeoref(unittest.TestCase):
             Image.fromarray(np.zeros((32, 32, 3), np.uint8)).save(p)
             _, meta = mod.read_image(p)
             self.assertFalse(meta["georeferenced"])
+
+
+class TestPoiCoordinates(unittest.TestCase):
+    """POI 坐标转换：GCJ-02 与 WGS84 往返误差应小于 0.2m。"""
+
+    def test_wgs84_gcj02_roundtrip(self):
+        mod = load_script("23_fetch_amap_poi.py")
+        lng, lat = 103.9940, 30.7196  # 成都北站片区
+        glng, glat = mod.wgs84_to_gcj02(lng, lat)
+        # 成都 GCJ-02 偏移约 300-500m，转换不能是恒等
+        self.assertGreater(abs(glng - lng) + abs(glat - lat), 0.001)
+        wlng, wlat = mod.gcj02_to_wgs84(glng, glat)
+        self.assertLess(abs(wlng - lng), 2e-6)
+        self.assertLess(abs(wlat - lat), 2e-6)
+
+    def test_rank_percentile(self):
+        mod = load_script("24_poi_demand_index.py")
+        self.assertEqual(mod.rank_percentile([1, 2, 3]), [0.0, 50.0, 100.0])
+        self.assertEqual(mod.rank_percentile([5]), [50.0])
+
+
+class TestCalibrationContract(unittest.TestCase):
+    """doc/records/audit-2026-10-18.md P0-1：split 必须被尊重，布局自由文本必须归一化。"""
+
+    def test_layout_prefix_normalization(self):
+        mod = load_script("22_capacity_calibrate.py")
+        self.assertEqual(mod.normalize_layout("垂直式为主"), "垂直式")
+        self.assertEqual(mod.normalize_layout("平行式为主"), "平行式")
+        self.assertEqual(mod.normalize_layout("斜列式为主"), "斜列式")
+        self.assertEqual(mod.normalize_layout("路边停车"), "平行式")
+        self.assertEqual(mod.normalize_layout("混合"), "不规则")
+        self.assertEqual(mod.normalize_layout(""), "垂直式")
+
+    def test_split_is_respected(self):
+        mod = load_script("22_capacity_calibrate.py")
+        rows = [{"lot_id": f"L{i:02d}", "split_raw": "calib" if i < 17 else "test"}
+                for i in range(24)]
+        calib, test, source = mod.resolve_split(rows)
+        self.assertEqual(source, "csv")
+        self.assertEqual(len(calib), 17)
+        self.assertEqual(len(test), 7)
+        self.assertEqual([r["lot_id"] for r in test], [f"L{i:02d}" for i in range(17, 24)])
+
+    def test_partial_split_rejected(self):
+        mod = load_script("22_capacity_calibrate.py")
+        rows = [{"lot_id": "A", "split_raw": "calib"},
+                {"lot_id": "B", "split_raw": ""}]
+        with self.assertRaises(SystemExit):
+            mod.resolve_split(rows)
+
+
+class TestSanityDedup(unittest.TestCase):
+    """doc/records/audit-2026-10-18.md P1-2：跨窗口检出必须能按距离去重。"""
+
+    def test_dedup_centers(self):
+        mod = load_script("21_capacity_sanity.py")
+        pts = [(0.0, 0.0), (1.5, 0.0), (5.0, 0.0), (5.5, 0.2)]
+        kept = mod.dedup_centers(pts, 2.0)
+        self.assertEqual(kept, [(0.0, 0.0), (5.0, 0.0)])
+
+
+class TestPoiKeyMask(unittest.TestCase):
+    """doc/records/audit-2026-10-18.md P1-6：meta/控制台不得暴露 Key 的前 4 位。"""
+
+    def test_mask_only_last4(self):
+        mod = load_script("23_fetch_amap_poi.py")
+        masked = mod.mask_key("abcd1234efgh5678")
+        self.assertEqual(masked, "***5678")
+        self.assertNotIn("abcd", masked)
+
+
+class TestPoiExcluded(unittest.TestCase):
+    """doc/records/audit-2026-10-18.md P0-3：24 号必须读取 exclude_lots.csv。"""
+
+    def test_load_excluded(self):
+        mod = load_script("24_poi_demand_index.py")
+        with tempfile.TemporaryDirectory() as d:
+            old = mod.CAP_DIR
+            mod.CAP_DIR = Path(d)
+            try:
+                (Path(d) / "exclude_lots.csv").write_text(
+                    "lot_id,reason\nseg_001,测试排除\n", encoding="utf-8")
+                self.assertEqual(mod.load_excluded(), {"seg_001"})
+            finally:
+                mod.CAP_DIR = old
+
+
+class TestSafeIo(unittest.TestCase):
+    """doc/records/audit-2026-10-18.md P0-2：覆盖产物前必须备份，且原子替换。"""
+
+    def test_write_csv_backs_up(self):
+        import csv as _csv
+        mod = load_script("safe_io.py")
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            p = d / "out.csv"
+            p.write_text("a,b\n0,0\n", encoding="utf-8")
+            backup_dir = d / "backup"
+            mod.write_csv_safe(p, [{"a": 1, "b": 2}], backup_dir=backup_dir, tag="test")
+            with open(p, encoding="utf-8-sig") as f:
+                rows = list(_csv.DictReader(f))
+            self.assertEqual(rows, [{"a": "1", "b": "2"}])
+            backups = list(backup_dir.glob("out.csv"))
+            self.assertEqual(len(backups), 1)
+            self.assertIn("0,0", backups[0].read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

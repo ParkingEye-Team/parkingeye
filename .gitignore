@@ -46,6 +46,10 @@ data/jl1_annot/*/preannot_raw/
 data/jl1_annot/*/work/
 
 # ---- 容量估计产物：保留轻量成果（CSV/GeoJSON/JSON），忽略大图 ----
+# 用户填写的真值/工作副本/备份不入库（可能含个人信息）
+data/capacity/truth_collection_filled*.csv
+data/capacity/truth_collection_work_*.csv
+data/capacity/backup/
 data/capacity/*.png
 data/capacity/*.jpg
 !data/capacity/*_small.jpg

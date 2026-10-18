@@ -334,14 +334,14 @@ def main():
         lon, lat = wtransform(UTM, WGS, [r["cx"]], [r["cy"]])
         truth_rows.append({
             "lot_id": r["id"], "lon": round(lon[0], 6), "lat": round(lat[0], 6),
-            "area_m2": r["area_m2"], "is_parking": "", "true_capacity": "",
-            "layout_true": "", "notes": "", "collected_by": "", "date": "",
+            "area_m2": r["area_m2"], "is_parking": "", "facility_type": "",
+            "true_capacity": "", "layout_true": "", "notes": "", "collected_by": "", "date": "",
             "model_capacity": r["capacity"],
         })
     truth_rows.sort(key=lambda x: -float(x["area_m2"]))
     with open(OUT / "truth_collection_sheet.csv", "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=["lot_id", "lon", "lat", "area_m2", "is_parking",
-                                          "true_capacity", "layout_true", "notes",
+                                          "facility_type", "true_capacity", "layout_true", "notes",
                                           "collected_by", "date", "model_capacity"])
         w.writeheader()
         w.writerows(truth_rows)
